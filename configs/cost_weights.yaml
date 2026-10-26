@@ -1,0 +1,44 @@
+# Countable cost model:
+#   cost = sum_g a_in[g]*input_tokens + a_out[g]*output_tokens + b*llm_calls + c*rerank_passes + d*index_queries
+# a depends on the generator g: a 7B token is not as expensive as a 1.5B token.
+# Units: "GPU-milliseconds equivalent". Defaults are PLACEHOLDERS derived from planning throughput;
+# replace them with the calibration measured in week 1 (scripts/calibrate_costs.py writes measured.yaml).
+
+default: measured_placeholder
+
+weight_sets:
+  measured_placeholder:
+    a_in:  {qwen7b: 0.80, qwen1p5b: 0.10}   # ms per prompt token  (= 1000 / prefill tok/s per GPU, times GPUs used)
+    a_out: {qwen7b: 25.0, qwen1p5b: 6.0}    # ms per generated token (batched decode)
+    b: 5.0          # ms fixed overhead per LLM call (scheduling, detokenisation)
+    c: 0.5          # ms per query-passage pair scored by the cross-encoder
+    d: 2.0          # ms per index query (BM25 lookup or dense lookup incl. query encoding)
+
+  # Sensitivity alternatives (all reported in the weight-sensitivity table)
+  tokens_only:
+    a_in:  {qwen7b: 1.0, qwen1p5b: 1.0}
+    a_out: {qwen7b: 1.0, qwen1p5b: 1.0}
+    b: 0.0
+    c: 0.0
+    d: 0.0
+  params_scaled:     # cost of a token proportional to generator parameter count (FLOPs proxy)
+    a_in:  {qwen7b: 7.6, qwen1p5b: 1.5}
+    a_out: {qwen7b: 22.8, qwen1p5b: 4.5}   # decode ~3x prefill per token (placeholder)
+    b: 0.0
+    c: 0.022       # MiniLM-L6 ~22M params per pair, in "billions of params" units
+    d: 0.11        # bge-base ~110M params per query encoding
+  api_price_like:    # illustrative only: typical API price ratio out:in ~ 4:1, retrieval ~free
+    a_in:  {qwen7b: 1.0, qwen1p5b: 0.25}
+    a_out: {qwen7b: 4.0, qwen1p5b: 1.0}
+    b: 0.0
+    c: 0.0
+    d: 0.0
+
+sensitivity:
+  n_random_draws: 500
+  log_uniform_factor: 4.0   # each weight multiplied by exp(U(-ln 4, ln 4))
+
+amortisation:
+  # offline index cost is divided by the number of queries served per index build
+  queries_per_build: [1000, 10000, 100000, 1000000]
+  default: 100000

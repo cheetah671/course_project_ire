@@ -1,0 +1,122 @@
+# Single source of truth for the experiment.
+# Every script reads this file; nothing else hard-codes grid values or seeds.
+# Items marked VERIFY must be checked before the full run.
+
+seed: 20261026            # global seed (sampling, splits, router training base seed)
+router_seeds: [0, 1, 2, 3, 4]
+
+paths:
+  # Override with env vars on Ada (see slurm/common.sh). Relative paths are relative to repo root.
+  data_root: ${DATA_ROOT:-data}
+  project_dir: ${DATA_ROOT:-data}/autorag_project     # AutoRAG project dir (one per corpus)
+  cache_dir: ${DATA_ROOT:-data}/cache                 # stage caches (retrieval, rerank, generation)
+  results_dir: ${RESULTS_ROOT:-results}
+
+corpus:
+  name: dpr_wiki_20181220_w100
+  # DPR Wikipedia split: 2018-12-20 dump, 100-word passages, TSV columns id,text,title.
+  # VERIFY: URL, passage count (expected 21,015,324), and file checksum.
+  tsv_url: https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
+  tsv_path: ${DATA_ROOT:-data}/raw/psgs_w100.tsv
+  subcorpus_size: 1000000        # target passages in the AutoRAG corpus (pilot with 100000)
+  bm25_mining_depth: 100         # BM25 (Pyserini, full corpus) candidates per query kept in the subcorpus
+  dense_mining_depth: 100        # bge dense candidates per query (only if dense mining is enabled)
+  dense_mining: false            # true = embed full 21M corpus once to mine dense negatives (~+10 GPU-h, see docs)
+  article_neighbours: 10         # extra passages kept from each gold-title article
+  pyserini_index: wikipedia-dpr-100w   # VERIFY prebuilt index name in your Pyserini version
+  doc_id_prefix: "w"             # AutoRAG doc_id = f"w{dpr_id}"
+  fixed_datetime: "2018-12-20"   # written into metadata.last_modified_datetime (AutoRAG requires it)
+
+datasets:
+  # n = sampled queries. hf_* = Hugging Face hub ids (VERIFY ids/configs/splits; sizes in docs are VERIFY).
+  nq:
+    enabled: true
+    task: qa
+    hops: single
+    hf_id: google-research-datasets/nq_open
+    hf_config: null
+    hf_split: validation
+    n: 1000
+  hotpotqa:
+    enabled: true
+    task: qa
+    hops: multi
+    hf_id: hotpotqa/hotpot_qa
+    hf_config: distractor          # only used for question/answer/supporting_facts; we do NOT use its distractor paragraphs
+    hf_split: validation
+    n: 1000
+    stratify_by: type              # bridge vs comparison
+  triviaqa:
+    enabled: true                  # extra dataset 1 (recommended)
+    task: qa
+    hops: single
+    hf_id: mandarjoshi/trivia_qa
+    hf_config: unfiltered.nocontext
+    hf_split: validation
+    n: 1000
+  fever:
+    enabled: false                 # extra dataset 2 (optional, non-QA). Turn on only if budget check passes.
+    task: verification
+    hops: single
+    hf_id: facebook/kilt_tasks
+    hf_config: fever
+    hf_split: validation
+    n: 1000
+    stratify_by: label
+
+split:
+  train: 0.6
+  dev: 0.2
+  test: 0.2
+  hub_title_max_queries: 20      # titles shared by more queries than this are not used to link queries (hubs)
+  near_dup_cosine: 0.95          # question-embedding cosine above which two questions are treated as duplicates
+
+grid:
+  retrievers: [bm25, dense, hybrid]
+  top_k: [3, 10]
+  reranker: [false, true]
+  generators: [qwen7b, qwen1p5b]
+  rerank_pool: 20                # reranker-on: retrieve 20, rerank all 20, keep top_k. reranker-off: retrieve top_k.
+  rrf_k: 60                      # RRF constant, fixed (AutoRAG hybrid_rrf otherwise grid-searches 4..80 on the eval set)
+  hybrid_pool: 20                # hybrid fuses BM25 top-20 and dense top-20
+
+models:
+  embedding: BAAI/bge-base-en-v1.5
+  embedding_query_instruction: "Represent this sentence for searching relevant passages: "
+  reranker: cross-encoder/ms-marco-MiniLM-L-6-v2
+  bm25_tokenizer: porter_stemmer
+  generators:
+    qwen7b:
+      hf_id: Qwen/Qwen2.5-7B-Instruct
+      params_b: 7.6               # VERIFY from model card
+      tensor_parallel_size: 2     # 2 x 11 GB cards; set 1 on a >=24 GB card
+    qwen1p5b:
+      hf_id: Qwen/Qwen2.5-1.5B-Instruct
+      params_b: 1.5               # VERIFY from model card
+      tensor_parallel_size: 1
+
+generation:
+  temperature: 0.0               # greedy
+  max_tokens: 32                 # short answers; verification needs ~3 tokens
+  max_model_len: 4096
+  dtype: half                    # fp16: Turing GPUs (RTX 2080 Ti) have no bf16. Use bfloat16 on Ampere+.
+  gpu_memory_utilization: 0.88
+  seed: 0
+
+prompts:
+  qa:
+    - role: system
+      content: "You are a question answering assistant. Answer with a short phrase only, no explanation."
+    - role: user
+      content: "Passages:\n{retrieved_contents}\n\nQuestion: {query}\nShort answer:"
+  verification:
+    - role: system
+      content: "You are a fact-checking assistant. Reply with exactly one word: SUPPORTS or REFUTES."
+    - role: user
+      content: "Passages:\n{retrieved_contents}\n\nClaim: {query}\nVerdict:"
+
+judge:
+  model: VERIFY_choose_after_validation   # must NOT be a Qwen model (self-preference bias)
+  base_url: http://localhost:8001/v1
+  ragas_queries_per_dataset: 100          # from the test split; all 24 configs judged on these
+  ragas_version: "0.2.15"                 # VERIFY; 0.4.x still accepts this API with deprecation warnings

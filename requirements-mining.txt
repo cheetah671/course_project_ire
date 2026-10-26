@@ -1,0 +1,7 @@
+# Env "ragroute-mining": full-corpus BM25 mining with a Pyserini prebuilt index.
+# Kept separate: Pyserini needs a JDK (21 for recent releases) and its own torch/faiss pins. VERIFY on Ada.
+pyserini            # pin after install, e.g. pyserini==X.Y.Z (VERIFY prebuilt index name: wikipedia-dpr-100w)
+pandas
+pyarrow
+pyyaml
+-e .

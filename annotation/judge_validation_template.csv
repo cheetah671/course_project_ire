@@ -1,0 +1,6 @@
+item_id,dataset,question_or_claim,gold_answers,passages,system_answer,faithfulness_label,relevance_label,correct_label,notes,annotator_id,adjudicated_faithfulness
+JV000,EXAMPLE_ONLY,"Who wrote the novel Example Book?","Jane Doe | J. Doe","[1] Example Book
+Example Book is a 1923 novel by Jane Doe.
+
+[2] Jane Doe
+Jane Doe was a writer.","Jane Doe",2,2,1,"illustrative row; delete before annotating",A1,

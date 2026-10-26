@@ -1,0 +1,12 @@
+# Env "ragroute-ragas": LLM-judge metrics. Separate because RAGAS/LangChain pins conflict with AutoRAG's.
+# The code uses the legacy evaluate() API (ragas 0.2.x; still importable in 0.4.x with deprecation warnings).
+ragas==0.2.15               # VERIFY; if you move to 0.4.x re-run the 150-item validation
+langchain-openai
+langchain-huggingface
+sentence-transformers
+pandas
+pyarrow
+pyyaml
+scikit-learn
+scipy
+-e .

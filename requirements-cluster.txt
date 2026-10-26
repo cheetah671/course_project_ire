@@ -1,0 +1,14 @@
+# Env "ragroute" on Ada (Python 3.11). Harness + generation + features.
+# AutoRAG 0.3.27 requires Python >=3.10,<3.13; its [all] extra constrains vLLM to >=0.11,<0.31.
+# VERIFY before the full run: the chosen vLLM version runs fp16 on the Ada GPU type (Turing cards have no
+# bf16 and no FlashAttention-2; check the vLLM release notes / a 20-prompt smoke test).
+autorag[gpu]==0.3.27
+vllm>=0.11,<0.31            # pin the exact version you smoke-tested here, e.g. vllm==0.X.Y (VERIFY)
+llama-index-embeddings-huggingface>=0.5.4
+sentence-transformers>=4.1.0
+datasets>=3.5.1
+pyarrow>=23.0.1
+lightgbm>=4.3
+matplotlib>=3.8
+pytest>=8
+-e .
