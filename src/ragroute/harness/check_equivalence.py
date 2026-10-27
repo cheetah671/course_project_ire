@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ragroute.config import REPO_ROOT, load_experiment
+from ragroute.config import load_experiment
 from ragroute.eval.metrics import extract_answer, normalize_answer
 
 
@@ -49,7 +49,7 @@ def main():
     qa.to_parquet(sub_qa, index=False)
 
     ev = Evaluator(str(sub_qa), str(main_project / "data" / "corpus.parquet"), project_dir=str(check_dir))
-    ev.start_trial(str(REPO_ROOT / "configs" / "autorag" / "full" / f"{args.config_id}.yaml"))
+    ev.start_trial(str(Path(cfg["paths"]["autorag_yaml_dir"]) / "full" / f"{args.config_id}.yaml"))
     trial = json.loads((check_dir / "trial.json").read_text())[-1]["trial_name"]
     gen = pd.read_parquet(check_dir / trial / "post_retrieve_node_line" / "generator" / "0.parquet")
     autorag_out = pd.DataFrame({"qid": qa["qid"].values, "autorag_text": gen["generated_texts"].values})

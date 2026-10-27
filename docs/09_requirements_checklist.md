@@ -21,7 +21,7 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 ## 2. Related work
 | Requirement | Where | Status |
 |---|---|---|
-| Position against Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452, Adaptive-RAG, METIS, RAGAS, LegalBench-RAG, chunking-vs-cost | docs/01 §2 | 🟡 bibliographic details VERIFY; chunking-vs-cost citations TODO |
+| Position against Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452, Adaptive-RAG, METIS, RAGAS, LegalBench-RAG, chunking-vs-cost | docs/01 §2 | ✅ bibliographic details of all 8 checked 2026-10-27; 🟡 chunking-vs-cost citations TODO |
 | Justify running the full grid despite AutoRAG-HP | docs/01 §2 (AutoRAG-HP row); docs/02 D12 | ✅ |
 | Reminder: pull reference lists of the first four papers and check who cites them | docs/00 §C.6; docs/01 §2; docs/07 "All" | ✅ |
 | Do not invent citations | Only listed works plus original dataset/tool papers, all VERIFY | ✅ |
@@ -29,11 +29,11 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 ## 3. Data
 | Requirement | Where | Status |
 |---|---|---|
-| NQ-open + HotpotQA over a stated Wikipedia dump and passage format | docs/02 D1; `configs/experiment.yaml` | 🟡 VERIFY URL/count |
+| NQ-open + HotpotQA over a stated Wikipedia dump and passage format | docs/02 D1; `configs/experiment.yaml` | ✅ URL and passage count verified |
 | 1–2 extra datasets, 2-sentence justification each, same index, compute impact | docs/02 D4 (TriviaQA recommended, FEVER optional, MuSiQue/2Wiki considered) | ✅ |
 | Fixed chunking, why, limitation | docs/02 D3 | ✅ |
-| ~1,000 queries/dataset; sampling procedure, seed, split by query | docs/02 D5; `data/prepare_qa.py`, `data/splits.py` | ✅ |
-| Leakage check through shared supporting docs | `data/splits.py` (grouped split, fail-fast guards), `leakage_report.json`; tests | ✅ |
+| ~1,000 queries/dataset; sampling procedure, seed, split by query | docs/02 D5; `data/prepare_qa.py`, `data/splits.py` | ✅ run on the real datasets: 4 × 1,000 sampled, deterministic, 600/200/200 per dataset |
+| Leakage check through shared supporting docs | `data/splits.py` (grouped split, fail-fast guards), `leakage_report.json`; tests | ✅ on real data: 293 shared articles found, 0 shared between train and test after grouping |
 
 ## 4. Harness, grid, compute
 | Requirement | Where | Status |
@@ -91,8 +91,8 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 3. Deadline and report format.
 4. Judge model choice (non-Qwen) and the κ threshold sign-off.
 5. FEVER in or out (week-2 budget check).
-6. Reference lists and citing papers of Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452; chunking-vs-cost papers.
-7. vLLM version that runs fp16 on Ada GPUs; Qwen2.5 fp16 sanity check.
-8. Pyserini prebuilt index name and docid format.
+6. Reference lists and citing papers of Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452; chunking-vs-cost papers. (Bibliographic details of the 8 core papers are now verified.)
+7. vLLM version that runs fp16 on Ada GPUs; Qwen2.5 fp16 sanity check. (Floor verified: compute capability ≥ 7.5, so no 1080 Ti.)
+8. Pyserini docid format (index name verified).
 9. Measured throughput and token counts to replace the planning assumptions in `scripts/budget.py` and `configs/cost_weights.yaml`.
-10. Dataset ids, field names and split sizes on Hugging Face (all VERIFY in docs/02 D4).
+10. ✔ Dataset ids, field names and split sizes verified; loaders run on the real data.

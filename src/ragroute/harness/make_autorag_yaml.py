@@ -27,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from ragroute.config import REPO_ROOT, all_configs, load_experiment
+from ragroute.config import all_configs, load_experiment
 
 RET_METRICS = ["retrieval_recall", "retrieval_ndcg", "retrieval_mrr"]
 GEN_METRICS = ["bleu", "rouge"]  # cheap; our EM/F1 are computed outside AutoRAG (AutoRAG has no EM/F1)
@@ -124,10 +124,10 @@ def full_config_yaml(cfg: dict, c, task: str = "qa") -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
-    ap.add_argument("--out", default=str(REPO_ROOT / "configs" / "autorag"))
+    ap.add_argument("--out", default=None, help="default: paths.autorag_yaml_dir from the config")
     args = ap.parse_args()
     cfg = load_experiment(args.config)
-    out = Path(args.out)
+    out = Path(args.out or cfg["paths"]["autorag_yaml_dir"])
     (out / "full").mkdir(parents=True, exist_ok=True)
     class NoAliasDumper(yaml.SafeDumper):  # no &id001 anchors: every node gets its own metrics list
         def ignore_aliases(self, data):

@@ -5,6 +5,9 @@ All scripts are in `slurm/`. Replace `VERIFY_ACCOUNT` / `VERIFY_PARTITION` and t
 per partition, `--gres` syntax, max wall time, max GPUs per user, scratch paths, `--exclusive`
 policy, and whether compute nodes reach the internet.
 
+**GPU floor (verified):** vLLM needs compute capability ≥ 7.5. Request RTX 2080 Ti or newer
+(e.g. `--gres=gpu:<type>:2` if Ada names GPU types; VERIFY the type string). GTX 1080 Ti nodes will fail.
+
 | Script | Resources (planning) | What it does | Resumable? |
 |---|---|---|---|
 | `00_setup_env.sh` | login node | 3 conda envs, model/dataset/corpus prefetch, Pyserini index download | n/a |

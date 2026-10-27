@@ -9,7 +9,8 @@ Values live in `configs/experiment.yaml`; this document explains them.
 
 ### D1. Corpus: DPR Wikipedia passages (2018-12-20 dump, 100-word passages)
 - **Decision.** One shared index for all datasets: the DPR Wikipedia split `psgs_w100.tsv`
-  (TSV, header `id, text, title`; ~21,015,324 passages; VERIFY URL/count/checksum).
+  (TSV, header `id, text, title`; 21,015,324 passages ✔ (matches the Pyserini `wikipedia-dpr-100w` index
+  metadata); URL live ✔, `psgs_w100.tsv.gz` = 4,694,541,059 bytes; record a checksum after download).
   AutoRAG `contents = "{title}\n{text}"`, `doc_id = "w{id}"`.
 - **Alternatives.** (a) KILT knowledge source (2019-08-01 snapshot), which ships provenance for NQ, HotpotQA,
   TriviaQA and FEVER on a single snapshot. (b) A separate corpus per dataset (HotpotQA's own 2017
@@ -52,10 +53,10 @@ Values live in `configs/experiment.yaml`; this document explains them.
 ### D4. Datasets and extra tasks
 | Dataset | Role | Justification (two sentences) | Shares index? | Compute impact |
 |---|---|---|---|---|
-| NQ-open (HF `google-research-datasets/nq_open`, validation, 3,610 VERIFY) | single-hop | Real user search questions with short answers, the standard open-domain QA benchmark on DPR Wikipedia. Lexically varied, so dense vs BM25 differences are expected. | yes | base |
-| HotpotQA (HF `hotpotqa/hotpot_qa`, distractor config, validation 7,405 VERIFY; questions/answers/supporting titles only) | multi-hop | Bridge and comparison questions needing two articles, where k and generator size should matter most. Provides question-type labels for the per-type analysis. | yes (title mapping) | base |
-| **TriviaQA** (unfiltered.nocontext, validation; VERIFY size) — **recommended extra** | single-hop, different style | Trivia questions written independently of evidence: longer, entity-rich, and known to be friendly to lexical retrieval, so the best retriever plausibly differs from NQ. Uses the same DPR index as in the DPR paper, so it adds query diversity at zero corpus cost. | yes | +1,000 queries: +24,000 LLM calls, +23.0M input tokens, **+3.7 generation GPU-h** |
-| **FEVER** (KILT version, 2-way SUPPORTS/REFUTES; validation 10,444 VERIFY) — optional | non-QA verification | Tests whether one router transfers across task types and exercises the metric normalisation (accuracy vs F1). Claims are short and evidence is single-article, so a cheap config may often suffice. | yes (title mapping; claims from a 2017 snapshot) | +1,000 queries: +24,000 calls, ~+3.5 GPU-h (shorter outputs) |
+| NQ-open (HF `google-research-datasets/nq_open`, validation, 3,610 ✔) | single-hop | Real user search questions with short answers, the standard open-domain QA benchmark on DPR Wikipedia. Lexically varied, so dense vs BM25 differences are expected. | yes | base |
+| HotpotQA (HF `hotpotqa/hotpot_qa`, distractor config, validation 7,405 ✔; 80% bridge / 20% comparison; questions/answers/supporting titles only) | multi-hop | Bridge and comparison questions needing two articles, where k and generator size should matter most. Provides question-type labels for the per-type analysis. | yes (title mapping) | base |
+| **TriviaQA** (unfiltered.nocontext, validation 11,313 ✔; ~14 answer aliases per question on average, so EM is more lenient than on NQ) — **recommended extra** | single-hop, different style | Trivia questions written independently of evidence: longer, entity-rich, and known to be friendly to lexical retrieval, so the best retriever plausibly differs from NQ. Uses the same DPR index as in the DPR paper, so it adds query diversity at zero corpus cost. | yes | +1,000 queries: +24,000 LLM calls, +23.0M input tokens, **+3.7 generation GPU-h** |
+| **FEVER** (KILT version, 2-way SUPPORTS/REFUTES; validation 10,444 ✔; 205 duplicate claims removed by our filter; sample is ~50/50 SUPPORTS/REFUTES) — optional | non-QA verification | Tests whether one router transfers across task types and exercises the metric normalisation (accuracy vs F1). Claims are short and evidence is single-article, so a cheap config may often suffice. | yes (title mapping; claims from a 2017 snapshot) | +1,000 queries: +24,000 calls, ~+3.5 GPU-h (shorter outputs) |
 | MuSiQue / 2WikiMultiHopQA — not chosen | multi-hop | Harder compositional multi-hop questions. Their evidence comes from their own paragraph pools, so sharing the DPR index needs another mapping step. | partly | same per-dataset cost; extra mapping effort |
 
 Decision: base = NQ + HotpotQA; add TriviaQA by default (cheap, same index). FEVER is added after the
@@ -148,6 +149,8 @@ week-2 budget check; it is the first item dropped if time is short.
 - **Alternatives.** Llama-3.1-8B + Llama-3.2-3B; Mistral-7B; sampling with several seeds.
 - **Why.** Same family and tokenizer, so token counts mean the same thing across generators and the
   size effect is isolated. Greedy decoding removes sampling variance from the oracle labels.
+- **Hardware floor ✔.** vLLM requires NVIDIA compute capability ≥ 7.5 (official install docs): RTX 2080 Ti
+  (7.5) is supported; **GTX 1080 Ti (6.1) is not**, so jobs must request 2080 Ti-class or newer GPUs.
 - **Risk.** fp16 on Turing (no bf16) could cause numerical problems for some models (VERIFY in the
   pilot: look for empty or garbage outputs). vLLM greedy output can still vary slightly with batch
   composition: measured in week 1 (`greedy_reproducibility.json`).

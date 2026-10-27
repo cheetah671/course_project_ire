@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ragroute.config import REPO_ROOT, all_configs, load_experiment
+from ragroute.config import all_configs, load_experiment
 
 RETRIEVERS = ("bm25", "dense", "hybrid")
 NODE_DIR = {"bm25": "lexical_retrieval", "dense": "semantic_retrieval", "hybrid": "hybrid_retrieval"}
@@ -76,7 +76,7 @@ def stage_retrieval(cfg, force=False):
     if not force and all((cache / "retrieval" / f"{r}.parquet").exists() for r in RETRIEVERS):
         print("retrieval cache exists; skipping")
         return
-    yaml_path = REPO_ROOT / "configs" / "autorag" / "retrieval_stage.yaml"
+    yaml_path = Path(cfg["paths"]["autorag_yaml_dir"]) / "retrieval_stage.yaml"
     t0 = time.time()
     ev = Evaluator(qa_data_path=str(data / "autorag" / "qa.parquet"),
                    corpus_data_path=str(data / "autorag" / "corpus.parquet"), project_dir=str(project))

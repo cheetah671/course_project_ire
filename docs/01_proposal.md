@@ -49,14 +49,14 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
 
 | Work | What it does | How we differ / what we reuse |
 |---|---|---|
-| Wang et al., "Searching for Best Practices in Retrieval-Augmented Generation", EMNLP 2024 (VERIFY; arXiv:2407.01219 VERIFY) | Full-pipeline ablation; recommends a "Balanced Efficiency Practice"; reports latency | They pick one recipe per setting. We ask whether the recipe should vary per query, and use countable cost rather than wall time alone. |
-| AutoRAG (Kim et al., arXiv:2410.20878; VERIFY title/authors) | Automated module search, node-by-node; per-query speed threshold; open source | **Our harness.** Its node-wise greedy selection prunes the grid; we disable that (one module per node, staged caching) to obtain all 24 configs on all queries. |
-| AutoRAG-HP (Findings of EMNLP 2024; VERIFY authors, arXiv id) | Online hyper-parameter tuning with bandits; comparable quality using about 20% of grid-search API calls | Makes exhaustive grids the known-wasteful way to *find a config*. We run the grid for another reason: oracle labels need every cell. We report its cost explicitly. |
-| arXiv:2505.03452 (2025 analysis of HPO methods for RAG; VERIFY title/authors) | Compares HPO strategies for RAG configs | Same: HPO finds one config per dataset; we study per-query variation. |
-| Adaptive-RAG (Jeong et al., NAACL 2024; VERIFY) | Classifier of query complexity → no-retrieval / single-step / multi-step strategy | Closest per-query baseline. It uses question text only; we add post-retrieval signals and a cost objective, and re-implement an Adaptive-RAG-*style* complexity → config baseline. |
-| METIS (SOSP 2025; VERIFY authors/title) | Serving system that adapts RAG configuration per query jointly with scheduling, using an LLM-based profile of the query | Discussed conceptually: it optimises serving latency under load; we do not reproduce a serving system (§5.4). |
-| RAGAS (Es et al., EACL 2024 demo; VERIFY) | LLM-judge metrics (faithfulness, answer relevancy) | Secondary metric only, after human validation. |
-| LegalBench-RAG (arXiv:2408.10343; VERIFY) and other domain RAG benchmarks | Domain-specific retrieval benchmarks | Out of scope; listed as future work for domain transfer. |
+| Wang et al., "Searching for Best Practices in Retrieval-Augmented Generation", EMNLP 2024 main (2024.emnlp-main.981; arXiv:2407.01219) ✔ | Full-pipeline ablation; recommends a "Balanced Efficiency Practice" (term from the spec: confirm wording in the paper); reports latency | They pick one recipe per setting. We ask whether the recipe should vary per query, and use countable cost rather than wall time alone. |
+| AutoRAG (Kim, Kim, Han, Eibich; arXiv:2410.20878, 2024; arXiv only, no venue listed) ✔ | Automated module search, node-by-node; per-query speed threshold; open source | **Our harness.** Its node-wise greedy selection prunes the grid; we disable that (one module per node, staged caching) to obtain all 24 configs on all queries. |
+| AutoRAG-HP (Fu et al., Findings of EMNLP 2024, pp. 3875–3891; arXiv:2406.19251) ✔ | Online hyper-parameter tuning as a multi-armed bandit (plus hierarchical MAB); reaches Recall@5 ≈ 0.8 with ~20% of the LLM API calls grid search needs | Makes exhaustive grids the known-wasteful way to *find a config*. We run the grid for another reason: oracle labels need every cell. We report its cost explicitly. |
+| Orbach et al., "An Analysis of Hyper-Parameter Optimization Methods for Retrieval Augmented Generation" (arXiv:2505.03452; AAAI 2026 Workshop on New Frontiers in IR) ✔ | Benchmarks 5 HPO algorithms on 5 datasets; greedy or random search is efficient; for greedy methods, choosing the model first beats pipeline order | Same: HPO finds one config per dataset; we study per-query variation. Their "model first" finding is a useful prior for our generator feature. |
+| Adaptive-RAG (Jeong, Baek, Cho, Hwang, Park; NAACL 2024; arXiv:2403.14403) ✔ | Classifier of query complexity → no-retrieval / single-step / multi-step strategy | Closest per-query baseline. It uses question text only; we add post-retrieval signals and a cost objective, and re-implement an Adaptive-RAG-*style* complexity → config baseline. |
+| METIS (Ray, Pan, Gu, Du, Feng, Ananthanarayanan, Netravali, Jiang; SOSP 2025; arXiv:2412.10543, first posted as "RAGServe") ✔ | Serving system that jointly schedules queries and adapts per-query RAG configuration (e.g. number of retrieved chunks, synthesis method); reports 1.64–2.54× lower generation latency without quality loss | Discussed conceptually: it optimises serving latency under load; we do not reproduce a serving system (§5.4). |
+| RAGAS (Es, James, Espinosa-Anke, Schockaert; EACL 2024 System Demonstrations, 2024.eacl-demo.16, pp. 150–158) ✔ | LLM-judge metrics (faithfulness, answer relevancy) | Secondary metric only, after human validation. |
+| LegalBench-RAG (Pipitone, Houir Alami; arXiv:2408.10343, 2024; no venue listed) ✔ and other domain RAG benchmarks | Domain-specific retrieval benchmarks | Out of scope; listed as future work for domain transfer. |
 | Chunking-vs-cost studies | [[TODO: find via reference lists of the first four papers; do not cite unread]] | We fix chunking (§design D3). |
 
 **TODO (open item 6):** pull the reference lists of the first four papers and check "cited by" for each.
@@ -110,15 +110,29 @@ judge noise · Ada queue/time limits.
 8 weeks, 3 people (docs/07_plan_and_team_split.md). Plumbing is week 1; weeks 2–7 go to oracle
 labelling, routing and evaluation.
 
-## References (all VERIFY; only works we actually use; no additions without reading)
-1. Wang et al. Searching for Best Practices in Retrieval-Augmented Generation. EMNLP 2024.
-2. Kim et al. AutoRAG: Automated Framework for optimization of Retrieval Augmented Generation Pipeline. arXiv:2410.20878.
-3. AutoRAG-HP: Automatic Online Hyper-Parameter Tuning for Retrieval-Augmented Generation. Findings of EMNLP 2024.
-4. arXiv:2505.03452 (2025), RAG hyper-parameter optimisation analysis.
-5. Jeong et al. Adaptive-RAG: Learning to Adapt Retrieval-Augmented Large Language Models through Question Complexity. NAACL 2024.
-6. METIS: Fast quality-aware RAG systems with configuration adaptation. SOSP 2025.
-7. Es et al. RAGAS: Automated Evaluation of Retrieval Augmented Generation. EACL 2024 (demos).
-8. Pipitone & Alami. LegalBench-RAG. arXiv:2408.10343.
+## References
+Core works 1–8: title, authors, venue and IDs checked on arXiv / ACL Anthology on 2026-10-27 (✔).
+Still to do: read each paper before citing a claim from it, pull their reference lists, check "cited by".
+1. ✔ Xiaohua Wang, Zhenghua Wang, Xuan Gao, Feiran Zhang, Yixin Wu, Zhibo Xu, Tianyuan Shi, Zhengyuan Wang,
+   Shizheng Li, Qi Qian, Ruicheng Yin, Changze Lv, Xiaoqing Zheng, Xuanjing Huang. Searching for Best Practices
+   in Retrieval-Augmented Generation. EMNLP 2024 (main), pp. 17716–17736. doi:10.18653/v1/2024.emnlp-main.981. arXiv:2407.01219.
+2. ✔ Dongkyu Kim, Byoungwook Kim, Donggeon Han, Matouš Eibich. AutoRAG: Automated Framework for optimization of
+   Retrieval Augmented Generation Pipeline. arXiv:2410.20878, 2024.
+3. ✔ Jia Fu, Xiaoting Qin, et al. AutoRAG-HP: Automatic Online Hyper-Parameter Tuning for Retrieval-Augmented
+   Generation. Findings of EMNLP 2024, pp. 3875–3891. arXiv:2406.19251. (Full author list: copy from the Anthology page.)
+4. ✔ Matan Orbach, Ohad Eytan, Benjamin Sznajder, Ariel Gera, Odellia Boni, Yoav Kantor, Gal Bloch, Omri Levy,
+   Hadas Abraham, Nitzan Barzilay, Eyal Shnarch, Michael E. Factor, Shila Ofek-Koifman, Paula Ta-Shma, Assaf Toledo.
+   An Analysis of Hyper-Parameter Optimization Methods for Retrieval Augmented Generation. AAAI 2026 Workshop on
+   New Frontiers in Information Retrieval. arXiv:2505.03452.
+5. ✔ Soyeong Jeong, Jinheon Baek, Sukmin Cho, Sung Ju Hwang, Jong C. Park. Adaptive-RAG: Learning to Adapt
+   Retrieval-Augmented Large Language Models through Question Complexity. NAACL 2024. arXiv:2403.14403.
+6. ✔ Siddhant Ray, Rui Pan, Zhuohan Gu, Kuntai Du, Shaoting Feng, Ganesh Ananthanarayanan, Ravi Netravali,
+   Junchen Jiang. METIS: Fast Quality-Aware RAG Systems with Configuration Adaptation. SOSP 2025.
+   doi:10.1145/3731569.3764855. arXiv:2412.10543 (v1 titled "RAGServe").
+7. ✔ Shahul Es, Jithin James, Luis Espinosa-Anke, Steven Schockaert. RAGAs: Automated Evaluation of Retrieval
+   Augmented Generation. EACL 2024 System Demonstrations, pp. 150–158. arXiv:2309.15217.
+8. ✔ Nicholas Pipitone, Ghita Houir Alami. LegalBench-RAG: A Benchmark for Retrieval-Augmented Generation in the
+   Legal Domain. arXiv:2408.10343, 2024.
 Datasets/tools we use (cite their original papers): Natural Questions (Kwiatkowski et al., TACL 2019);
 NQ-open (Lee et al., ACL 2019); HotpotQA (Yang et al., EMNLP 2018); TriviaQA (Joshi et al., ACL 2017);
 FEVER (Thorne et al., NAACL 2018); KILT (Petroni et al., NAACL 2021) if FEVER-KILT is used; DPR
@@ -126,4 +140,5 @@ FEVER (Thorne et al., NAACL 2018); KILT (Petroni et al., NAACL 2021) if FEVER-KI
 (Xiao et al., 2023); Sentence-BERT (Reimers & Gurevych, EMNLP 2019) and MS MARCO (Nguyen et al., 2016)
 for the cross-encoder; Qwen2.5 technical report (2024); vLLM / PagedAttention (Kwon et al., SOSP 2023);
 Pyserini (Lin et al., SIGIR 2021); Cohen's kappa (Cohen, 1960); bootstrap significance testing for NLP
-(Koehn, EMNLP 2004; Berg-Kirkpatrick et al., EMNLP 2012). All VERIFY.
+(Koehn, EMNLP 2004; Berg-Kirkpatrick et al., EMNLP 2012). These dataset/tool references are not yet
+checked: VERIFY each before submission.
