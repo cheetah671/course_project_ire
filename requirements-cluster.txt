@@ -3,6 +3,9 @@
 # VERIFY before the full run: the chosen vLLM version runs fp16 on the Ada GPU type (Turing cards have no
 # bf16 and no FlashAttention-2; check the vLLM release notes / a 20-prompt smoke test).
 autorag[gpu]==0.3.27
+pandas>=2.2.3,<3            # REQUIRED: AutoRAG 0.3.27 writes lists into a string column; pandas 3's default
+                            # Arrow-backed "str" dtype rejects that (TypeError in BaseRetrieval.cast_to_run).
+                            # Found by scripts/smoke_autorag_local.py on 2026-10-27.
 vllm>=0.11,<0.31            # pin the exact version you smoke-tested here, e.g. vllm==0.X.Y (VERIFY)
 llama-index-embeddings-huggingface>=0.5.4
 sentence-transformers>=4.1.0

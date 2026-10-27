@@ -17,7 +17,9 @@ def tokens_per_call(k: int, passage_tokens: int, overhead: int) -> int:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--passage-tokens", type=int, default=135, help="title + 100 words, Qwen tokenizer (VERIFY)")
+    ap.add_argument("--passage-tokens", type=int, default=147,
+                    help="title + 100 words, Qwen tokenizer. Extrapolated from the local AutoRAG smoke test "
+                         "(104 tokens per ~73-word passage incl. title, 2026-10-27); re-measure on real DPR passages")
     ap.add_argument("--prompt-overhead", type=int, default=80, help="system+instruction+chat template+question")
     ap.add_argument("--out-tokens", type=float, default=8.0)
     ap.add_argument("--prefill-7b", type=float, default=2500.0, help="tok/s, 7B fp16, TP=2 on 2x RTX 2080 Ti (ASSUMED)")

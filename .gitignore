@@ -1,8 +1,10 @@
-data/
-results/
-logs/
-synthetic*/
-configs/autorag/
+# Leading "/" = only the top-level folder. A bare "data/" would also hide the code package src/ragroute/data/.
+/data/
+/results/
+/logs/
+/synthetic*/
+/configs/autorag/
 __pycache__/
 *.egg-info/
 .pytest_cache/
+.venv/

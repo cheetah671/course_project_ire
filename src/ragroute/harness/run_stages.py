@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import socket
@@ -80,11 +81,23 @@ def stage_retrieval(cfg, force=False):
     t0 = time.time()
     ev = Evaluator(qa_data_path=str(data / "autorag" / "qa.parquet"),
                    corpus_data_path=str(data / "autorag" / "corpus.parquet"), project_dir=str(project))
-    ev.start_trial(str(yaml_path))
+    # skip_validation: AutoRAG's Validator runs a mini-trial on a sampled corpus in a temp dir but reuses our
+    # absolute Chroma path; once the full index exists it returns ids missing from the sample and crashes.
+    # Data is validated by build_corpus.py and by Evaluator.__init__ (schema + retrieval_gt ids) instead.
+    ev.start_trial(str(yaml_path), skip_validation=True)
     wall = time.time() - t0
     trial = json.loads((project / "trial.json").read_text())[-1]["trial_name"]
     export_retrieval(project, trial, cache)
     _log_timing(cache, {"stage": "retrieval_trial_incl_ingest", "seconds": wall, "trial": trial})
+
+
+def node_col(df: pd.DataFrame, base: str, retriever: str) -> pd.Series:
+    """Per-module node files ({node}/0.parquet) store plain column names (retrieved_ids, ...); the suffixed
+    names (_lexical/_semantic) only appear in the 'best' result passed to the next node. Accept both."""
+    for name in (base, f"{base}{SUFFIX[retriever]}"):
+        if name in df.columns:
+            return df[name]
+    raise KeyError(f"{base} not in {list(df.columns)}")
 
 
 def export_retrieval(project: Path, trial: str, cache: Path):
@@ -93,12 +106,11 @@ def export_retrieval(project: Path, trial: str, cache: Path):
     for r in RETRIEVERS:
         node = node_line / NODE_DIR[r]
         df = pd.read_parquet(node / "0.parquet")
-        s = SUFFIX[r]
         out = pd.DataFrame({
             "qid": qa["qid"].values,
-            "ids": df[f"retrieved_ids{s}"].map(list).values,
-            "scores": df[f"retrieve_scores{s}"].map(lambda x: [float(v) for v in x]).values,
-            "contents": df[f"retrieved_contents{s}"].map(list).values,
+            "ids": node_col(df, "retrieved_ids", r).map(list).values,
+            "scores": node_col(df, "retrieve_scores", r).map(lambda x: [float(v) for v in x]).values,
+            "contents": node_col(df, "retrieved_contents", r).map(list).values,
         })
         out.to_parquet(cache / "retrieval" / f"{r}.parquet", index=False)
         summ = pd.read_csv(node / "summary.csv")
@@ -138,6 +150,18 @@ def stage_rerank(cfg, force=False):
         print(f"reranked {r}: {int(out['n_pairs'].sum())} pairs in {secs:.1f}s")
 
 
+def chat_token_count(tok, messages) -> int:
+    """Prompt length in tokens after the chat template, as vLLM's LLM.chat sees it.
+    transformers >= 5 returns a BatchEncoding (dict) from apply_chat_template(tokenize=True); older versions
+    return a list of ids. len(dict) would silently give 2, so unwrap explicitly."""
+    out = tok.apply_chat_template(messages, add_generation_prompt=True, tokenize=True)
+    if hasattr(out, "keys"):
+        out = out["input_ids"]
+    if len(out) and isinstance(out[0], (list, tuple)):
+        out = out[0]
+    return len(out)
+
+
 # ------------------------------------------------------------------ generation
 def contexts_for(cache: Path, retriever: str, top_k: int, rerank: bool) -> pd.DataFrame:
     src = "rerank" if rerank else "retrieval"
@@ -151,8 +175,6 @@ def stage_generate(cfg, gen_key: str, force=False, limit: int | None = None, onl
                    subdir: str = "generation"):
     """`only` + `subdir` let the reproducibility check re-run one config into a separate folder
     (e.g. generation_repro/) without touching the main cache."""
-    from autorag.nodes.generator import Vllm
-    from autorag.nodes.promptmaker import ChatFstring
     from transformers import AutoTokenizer
 
     data, cache, project = _paths(cfg)
@@ -163,17 +185,48 @@ def stage_generate(cfg, gen_key: str, force=False, limit: int | None = None, onl
     if limit:
         qa = qa.head(limit)
     g = cfg["models"]["generators"][gen_key]
-    gen = cfg["generation"]
     configs = [c for c in all_configs(cfg) if c.generator == gen_key and (only is None or c.config_id == only)]
     todo = [c for c in configs if force or not (cache / subdir / f"{c.config_id}.parquet").exists()]
     if not todo:
         print(f"all {len(configs)} configs for {gen_key} cached; skipping")
         return
     tok = AutoTokenizer.from_pretrained(g["hf_id"])
+    with open_generator(cfg, gen_key, project, cache) as llm:
+        _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache, subdir, project)
+
+
+@contextlib.contextmanager
+def open_generator(cfg, gen_key: str, project: Path, cache: Path):
+    """Yields an AutoRAG generator module for `gen_key` on the configured backend; loads the model once."""
+    g = cfg["models"]["generators"][gen_key]
+    gen = cfg["generation"]
     t_load = time.time()
-    llm = Vllm(str(project), llm=g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
-               max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"])
-    _log_timing(cache, {"stage": f"load_{gen_key}", "seconds": time.time() - t_load})
+    if gen["backend"] == "vllm":
+        from autorag.nodes.generator import Vllm
+
+        llm = Vllm(str(project), llm=g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+                   max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"])
+        _log_timing(cache, {"stage": f"load_{gen_key}", "backend": "vllm", "seconds": time.time() - t_load})
+        yield llm
+    elif gen["backend"] == "llamacpp":
+        from ragroute.harness.llamacpp import LlamaServer, ensure_gguf, make_generator
+
+        lc = gen["llamacpp"]
+        model_path = ensure_gguf(g["gguf_repo"], g["gguf_pattern"])
+        with LlamaServer(lc["server_bin"], model_path, lc["port"], lc["parallel"], lc["ctx_per_slot"],
+                         lc["n_gpu_layers"], gen["seed"], str(cache / f"llama_server_{gen_key}.log"),
+                         lib_path=lc.get("lib_path")) as srv:
+            _log_timing(cache, {"stage": f"load_{gen_key}", "backend": "llamacpp", "model": Path(model_path).name,
+                                "seconds": time.time() - t_load})
+            yield make_generator(str(project), srv.url, lc["autorag_model_label"], batch=lc["parallel"] * 2)
+    else:
+        raise ValueError(f"unknown generation backend {gen['backend']}")
+
+
+def _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache: Path, subdir: str, project: Path):
+    from autorag.nodes.promptmaker import ChatFstring
+
+    gen = cfg["generation"]
     prompter = ChatFstring(str(project))
     for c in todo:
         ctx = contexts_for(cache, c.retriever, c.top_k, c.rerank)
@@ -188,7 +241,7 @@ def stage_generate(cfg, gen_key: str, force=False, limit: int | None = None, onl
         res = llm.pure(df[["prompts"]].copy(), temperature=gen["temperature"], max_tokens=gen["max_tokens"],
                        seed=gen["seed"])
         secs = time.time() - t0
-        in_tok = [len(tok.apply_chat_template(p, add_generation_prompt=True, tokenize=True)) for p in df["prompts"]]
+        in_tok = [chat_token_count(tok, p) for p in df["prompts"]]
         out = pd.DataFrame({
             "qid": df["qid"].values, "config_id": c.config_id, "generator": gen_key,
             "generated_text": res["generated_texts"].values,
@@ -221,7 +274,7 @@ def check_prompt_token_count(cfg, gen_key: str, n: int = 20):
     llm = LLM(g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=cfg["generation"]["dtype"],
               max_model_len=cfg["generation"]["max_model_len"])
     outs = llm.chat(msgs, SamplingParams(max_tokens=1, temperature=0))
-    ours = [len(tok.apply_chat_template(m, add_generation_prompt=True, tokenize=True)) for m in msgs]
+    ours = [chat_token_count(tok, m) for m in msgs]
     theirs = [len(o.prompt_token_ids) for o in outs]
     print("tokenizer vs vLLM prompt lengths equal:", ours == theirs, list(zip(ours, theirs))[:5])
 

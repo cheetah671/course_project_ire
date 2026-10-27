@@ -42,6 +42,12 @@ def load_experiment(path: str | Path | None = None) -> dict:
         cfg["paths"][key] = str(p if p.is_absolute() else REPO_ROOT / p)
     tsv = Path(cfg["corpus"]["tsv_path"])
     cfg["corpus"]["tsv_path"] = str(tsv if tsv.is_absolute() else REPO_ROOT / tsv)
+    if os.environ.get("RAGROUTE_PILOT") == "1":
+        p = cfg.get("pilot", {})
+        cfg["corpus"]["subcorpus_size"] = p.get("subcorpus_size", cfg["corpus"]["subcorpus_size"])
+        for d in cfg["datasets"].values():
+            d["n"] = p.get("n_per_dataset", d["n"])
+        cfg["is_pilot"] = True
     return cfg
 
 

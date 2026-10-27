@@ -7,9 +7,9 @@ checked against the real source (docs, model card, cluster admin) before we rely
 
 | # | Assumption | If false |
 |---|---|---|
-| A1 | Team of 3, ~8 weeks, starting Mon 2026-10-26; final report due around 2026-12-20. **VERIFY deadline.** | Compress weeks 6–8 (drop the latency study and FEVER first). |
-| A2 | Ada GPUs are 11 GB RTX 2080 Ti-class (Turing, no bf16), 4 GPUs per node, with per-job time limits around a day or more. **VERIFY GPU type, `--gres` syntax, partition/account names, max wall time, scratch paths.** Hard floor ✔: vLLM needs compute capability ≥ 7.5, so GTX 1080 Ti nodes (6.1) cannot run the generators. | On ≥24 GB Ampere cards: TP=1 for the 7B model, `dtype: bfloat16`, budget roughly halves. |
-| A3 | Compute nodes have no internet, so models and datasets are prefetched on a login node into `$HF_HOME`. | If they do have internet, nothing changes; the offline flags just become unnecessary. |
+| A1 | ✔ Team of 3. **Mid-submission Fri 2026-10-31; final deadline Fri 2026-11-21** (confirmed by the team). Mid-submission format not yet known. | Plan in docs/07 already cuts scope (3 datasets, FEVER optional, latency optional). |
+| A2 | **Checked on Ada 2026-10-27 (account `cs4406`, QoS `cs4406`, partition `u22`):** max **1 GPU, 10 CPUs, 1 running job and 1 submitted job per user, 6 h wall time**. Node gnode002 has **GTX 1080 Ti (11 GB, compute capability 6.1)**, which vLLM does not support (floor 7.5). GPU types of other nodes are not recorded in SLURM; still unknown whether any `u22` node has 2080 Ti or newer. | If no vLLM-capable GPU is reachable: see the GPU decision in docs/04 (ask for a GPU allocation, or change the serving engine).
+| A3 | ✔ Compute nodes **do** have internet (Hugging Face and PyPI reachable from gnode002). Storage: home quota 25 GB (`/home2/cs4406.11`), no personal `/share1` folder; node-local `/ssd_scratch` (~438 GB free) and `/scratch` (~540 GB free) exist but are per node. | Stage large data (corpus, indexes, models) into node-local scratch inside each job, or ask admins for a `/share1` folder. |
 | A4 | AutoRAG **0.3.27** (latest on PyPI at writing) is the harness. Its behaviour below was checked by reading its source, not by running it. **VERIFY by the week-1 equivalence check.** | If a later version changes node semantics, pin 0.3.27. |
 | A5 | Open-weight generators from one family: **Qwen2.5-7B-Instruct** and **Qwen2.5-1.5B-Instruct** (same tokenizer, so token counts are comparable). **VERIFY licences and parameter counts on the model cards.** | Llama-3.1-8B / 3.2-3B are drop-in alternatives (gated licences, different tokenizers). |
 | A6 | Corpus: DPR Wikipedia split (2018-12-20 dump, 100-word passages, `id/text/title` TSV). ✔ URL live (4.69 GB gz), 21,015,324 passages (matches Pyserini). Still check the TSV header and checksum after download. | KILT knowledge source (2019-08-01) is the alternative (see design doc D1). |
@@ -18,27 +18,19 @@ checked against the real source (docs, model card, cluster admin) before we rely
 | A9 | "Cost" means countable marginal cost (tokens, calls, reranker pairs, index queries) with documented weights. Latency is secondary and measured in one session only. | — |
 | A10 | Group 4 in the spec ("metric: normalised quality and cost for that (query, config)") is the router's **training target**, not an input. Using it as an input feature would leak the label. | — |
 
-## B. "Bllm": unconfirmed term from a team meeting
+## B. "Bllm" (resolved 2026-10-27)
 
-Not guessed silently. The plan proceeds with the **base design (24 configs, no Bllm)**. Plausible readings:
+The team confirmed **"Bllm" meant vLLM**, the LLM inference engine. The base design already serves both
+generators (and the judge) with vLLM, so the plan is unchanged: 24 configs, no extra arm.
 
-| Interpretation | What it would add | Change to the plan | Compute impact (per 1,000-query dataset) |
-|---|---|---|---|
-| **B1. Baseline LLM = closed-book (no retrieval)** | A "no-retrieval" option per generator, as in Adaptive-RAG's no-retrieval branch | +2 configs (26). The router can skip retrieval entirely for easy queries. Cost model: 0 index queries, 0 rerank, ~100 input tokens. | Small: about +0.1 generation GPU-h |
-| **B2. Bigger LLM as a 3rd generator** (e.g. Qwen2.5-14B) | Stronger quality ceiling and a wider cost spread | +12 configs (36). 14B in fp16 is ~30 GB, so it needs TP=4 on 11 GB cards, or AWQ quantisation (which changes quality). | About +5–6 GPU-h, roughly 1.8× the 7B share (VERIFY) |
-| **B3. Black-box / API LLM** (as generator or judge) | Real dollar cost; a stronger judge | Generator: +12 configs priced in $, not GPU-ms, and not reproducible over time. Judge: replaces the local judge after the same 150-item validation. | $ only; depends on price sheet |
-| **B4. LLM-based router baseline** ("LLM decides the config", similar in spirit to METIS's LLM profiler) | One more baseline | Prompt the 7B model with the question and config descriptions; its own LLM call is added to the router's cost. | ~1,000 extra short calls: negligible |
-| **B5. Typo, e.g. "BM25 + LLM"** | Nothing new | Already in the grid (bm25-* configs). | — |
-
-**Recommendation if the team confirms any of these:** B1 is cheapest and most informative, because a
-no-retrieval option is where per-query routing typically saves the most cost. B2 is next if GPUs allow.
-Write the confirmed meaning into this table and into `configs/experiment.yaml`.
+Consequence: vLLM is a hard requirement, so the generators must run on GPUs vLLM supports
+(compute capability ≥ 7.5; see A2 and docs/04).
 
 ## C. Open items (also tracked in docs/09_requirements_checklist.md)
 
-1. Confirm what "Bllm" means (section B).
-2. Ada details: GPU type, account/partition, max wall time, scratch paths, whether `--exclusive` is allowed (A2).
-3. Final deadline and report format (page limit, template) (A1).
+1. ✔ "Bllm" = vLLM (section B).
+2. Ada: ✔ account/partition/QoS limits, scratch, internet (A2, A3). **Open: which `u22` nodes (if any) have vLLM-capable GPUs (≥ 2080 Ti).** Ask the TA/admins, or probe nodes.
+3. ✔ Deadlines known (A1). Open: mid-submission and final report format (pages, template, demo?).
 4. Judge model: must not be Qwen; pick after the 150-item validation (candidates: a ~7–9B instruct model from another family; a stronger model if API credit exists).
 5. Whether FEVER is included: decided after the week-2 budget check (design doc §3).
 6. Pull the reference lists of Wang et al. 2024, AutoRAG, AutoRAG-HP and arXiv:2505.03452, and check who cites them (Semantic Scholar / Google Scholar "cited by"). Add chunking-vs-cost studies found there. **No citation is added without reading the paper.**

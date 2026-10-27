@@ -55,7 +55,7 @@ Values live in `configs/experiment.yaml`; this document explains them.
 |---|---|---|---|---|
 | NQ-open (HF `google-research-datasets/nq_open`, validation, 3,610 ✔) | single-hop | Real user search questions with short answers, the standard open-domain QA benchmark on DPR Wikipedia. Lexically varied, so dense vs BM25 differences are expected. | yes | base |
 | HotpotQA (HF `hotpotqa/hotpot_qa`, distractor config, validation 7,405 ✔; 80% bridge / 20% comparison; questions/answers/supporting titles only) | multi-hop | Bridge and comparison questions needing two articles, where k and generator size should matter most. Provides question-type labels for the per-type analysis. | yes (title mapping) | base |
-| **TriviaQA** (unfiltered.nocontext, validation 11,313 ✔; ~14 answer aliases per question on average, so EM is more lenient than on NQ) — **recommended extra** | single-hop, different style | Trivia questions written independently of evidence: longer, entity-rich, and known to be friendly to lexical retrieval, so the best retriever plausibly differs from NQ. Uses the same DPR index as in the DPR paper, so it adds query diversity at zero corpus cost. | yes | +1,000 queries: +24,000 LLM calls, +23.0M input tokens, **+3.7 generation GPU-h** |
+| **TriviaQA** (unfiltered.nocontext, validation 11,313 ✔; ~14 answer aliases per question on average, so EM is more lenient than on NQ) — **recommended extra** | single-hop, different style | Trivia questions written independently of evidence: longer, entity-rich, and known to be friendly to lexical retrieval, so the best retriever plausibly differs from NQ. Uses the same DPR index as in the DPR paper, so it adds query diversity at zero corpus cost. | yes | +1,000 queries: +24,000 LLM calls, +24.9M input tokens, **+4.0 generation GPU-h** |
 | **FEVER** (KILT version, 2-way SUPPORTS/REFUTES; validation 10,444 ✔; 205 duplicate claims removed by our filter; sample is ~50/50 SUPPORTS/REFUTES) — optional | non-QA verification | Tests whether one router transfers across task types and exercises the metric normalisation (accuracy vs F1). Claims are short and evidence is single-article, so a cheap config may often suffice. | yes (title mapping; claims from a 2017 snapshot) | +1,000 queries: +24,000 calls, ~+3.5 GPU-h (shorter outputs) |
 | MuSiQue / 2WikiMultiHopQA — not chosen | multi-hop | Harder compositional multi-hop questions. Their evidence comes from their own paragraph pools, so sharing the DPR index needs another mapping step. | partly | same per-dataset cost; extra mapping effort |
 
@@ -161,31 +161,33 @@ QA: system "Answer with a short phrase only"; user "Passages … Question … Sh
 non-empty line, strip an "Answer:"-style prefix (`extract_answer`). No per-config prompt tuning.
 
 ### D12. Compute budget (from `scripts/budget.py`; ASSUMED throughput, replace with pilot measurements)
-Assumptions: passage = 135 tokens (title + 100 words), prompt overhead 80 → **485 input tokens at k=3,
-1,430 at k=10**; output ~8 tokens; prefill 2,500 tok/s for 7B (TP=2 on 2×2080 Ti) and 10,000 tok/s
+Assumptions: passage = 147 tokens (title + 100 words; extrapolated from the local AutoRAG smoke test, which
+measured 104 Qwen tokens per ~73-word passage and mean prompts of 359 / 1,139 tokens at k=3 / k=10), prompt
+overhead 80 → **521 input tokens at k=3, 1,550 at k=10**; output ~8 tokens; prefill 2,500 tok/s for 7B (TP=2 on 2×2080 Ti) and 10,000 tok/s
 for 1.5B (1 GPU); ×1.3 overhead. Judge: RAGAS faithfulness + answer relevancy ≈ 3,500 input + 300
 output tokens per item, 7–9B judge on 2 GPUs at 2,500 tok/s.
 
 | Datasets | Queries | LLM calls (24 configs) | Gen. input tokens | **Gen. GPU-h** | Judge on ALL items, GPU-h | Judge on all items, API $ (illustrative†) |
 |---|---|---|---|---|---|---|
-| NQ + HotpotQA | 2,000 | 48,000 | 46.0M | **7.5** | 48.5 | 34 (cheap tier) / 564 (strong tier) |
-| + TriviaQA | 3,000 | 72,000 | 68.9M | **11.2** | 72.8 | 51 / 846 |
-| + FEVER | 4,000 | 96,000 | 91.9M | **14.9** | 97.1 | 68 / 1,128 |
+| NQ + HotpotQA | 2,000 | 48,000 | 49.7M | **8.1** | 48.5 | 34 (cheap tier) / 564 (strong tier) |
+| + TriviaQA | 3,000 | 72,000 | 74.6M | **12.1** | 72.8 | 51 / 846 |
+| + FEVER | 4,000 | 96,000 | 99.4M | **16.2** | 97.1 | 68 / 1,128 |
 
 † Illustrative prices only: "cheap tier" $0.15 / $0.60 per 1M input/output tokens, "strong tier"
 $2.50 / $10. **VERIFY against current price sheets; never quote these as real costs.**
-If measured throughput is half the assumption, generation becomes 14.9 / 22.4 / 29.9 GPU-h.
+If measured throughput is half the assumption, generation roughly doubles (about 16 / 24 / 32 GPU-h).
 
 Offline (once): sub-corpus embedding of 1M passages with bge-base ≈ 0.5 GPU-h (ASSUMED); optional
 full-corpus dense mining ≈ 21× that (~10 GPU-h); BM25 ingestion is CPU-only.
 Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minutes with MiniLM-L6.
 
 **What the arithmetic implies.**
-1. The full grid is affordable: about 15 GPU-h for 4 datasets, ~30 GPU-h with reruns.
-2. **Judging every output costs ~6.5× the whole generation budget.** So the LLM judge cannot be the
+1. The full grid is affordable: about 16 GPU-h for 4 datasets, ~32 GPU-h with reruns. Under the cs4406 QoS
+   (1 GPU, 6 h per job) that is roughly 4–6 sequential 6-hour jobs.
+2. **Judging every output costs ~6× the whole generation budget.** So the LLM judge cannot be the
    oracle label; EM/F1 are (free and deterministic). RAGAS runs only on a validated subsample:
    100 test queries/dataset × 24 configs = 9,600 items ≈ 9.7 GPU-h (200/dataset ≈ 19.4 GPU-h).
-3. Each extra dataset costs ~3.7 generation GPU-h but ~24 judge GPU-h if fully judged. This is why
+3. Each extra dataset costs ~4.0 generation GPU-h but ~24 judge GPU-h if fully judged. This is why
    dataset count is limited by the judge, not by generation.
 
 ---

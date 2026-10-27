@@ -49,22 +49,38 @@ def main():
     qa.to_parquet(sub_qa, index=False)
 
     ev = Evaluator(str(sub_qa), str(main_project / "data" / "corpus.parquet"), project_dir=str(check_dir))
-    ev.start_trial(str(Path(cfg["paths"]["autorag_yaml_dir"]) / "full" / f"{args.config_id}.yaml"))
+    # skip_validation: AutoRAG's Validator runs a mini-trial on a sampled corpus in a temp dir but reuses our
+    # absolute Chroma path; once the full index exists it returns ids missing from the sample and crashes.
+    # Data is validated by build_corpus.py and by Evaluator.__init__ (schema + retrieval_gt ids) instead.
+    yaml_path = str(Path(cfg["paths"]["autorag_yaml_dir"]) / "full" / f"{args.config_id}.yaml")
+    if cfg["generation"]["backend"] == "llamacpp":
+        # the YAML's openai_llm node talks to a llama.cpp server for this config's generator
+        from ragroute.config import RagConfig as _RC
+        from ragroute.harness.llamacpp import LlamaServer, ensure_gguf
+
+        g = cfg["models"]["generators"][_RC.from_id(args.config_id).generator]
+        lc = cfg["generation"]["llamacpp"]
+        with LlamaServer(lc["server_bin"], ensure_gguf(g["gguf_repo"], g["gguf_pattern"]), lc["port"],
+                         lc["parallel"], lc["ctx_per_slot"], lc["n_gpu_layers"], cfg["generation"]["seed"],
+                         str(check_dir / "llama_server.log"), lib_path=lc.get("lib_path")):
+            ev.start_trial(yaml_path, skip_validation=True)
+    else:
+        ev.start_trial(yaml_path, skip_validation=True)
     trial = json.loads((check_dir / "trial.json").read_text())[-1]["trial_name"]
     gen = pd.read_parquet(check_dir / trial / "post_retrieve_node_line" / "generator" / "0.parquet")
     autorag_out = pd.DataFrame({"qid": qa["qid"].values, "autorag_text": gen["generated_texts"].values})
 
     # passages that reached the prompt in AutoRAG's run
     from ragroute.config import RagConfig
-    from ragroute.harness.run_stages import NODE_DIR, SUFFIX
+    from ragroute.harness.run_stages import NODE_DIR, node_col
 
     c = RagConfig.from_id(args.config_id)
     if c.rerank:
-        ids_df, col = pd.read_parquet(check_dir / trial / "post_retrieve_node_line" / "passage_reranker" / "0.parquet"), "retrieved_ids"
+        ids = pd.read_parquet(check_dir / trial / "post_retrieve_node_line" / "passage_reranker" / "0.parquet")["retrieved_ids"]
     else:
         ids_df = pd.read_parquet(check_dir / trial / "retrieve_node_line" / NODE_DIR[c.retriever] / "0.parquet")
-        col = f"retrieved_ids{SUFFIX[c.retriever]}"
-    autorag_out["autorag_ids"] = ids_df[col].map(list).values
+        ids = node_col(ids_df, "retrieved_ids", c.retriever)
+    autorag_out["autorag_ids"] = ids.map(list).values
 
     staged = pd.read_parquet(cache / "generation" / f"{args.config_id}.parquet")
     m = autorag_out.merge(staged[["qid", "generated_text", "retrieved_ids"]], on="qid")

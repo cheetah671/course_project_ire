@@ -1,7 +1,10 @@
 # Deliverable 6: Week-by-week plan and 3-person split
 
-Assumes 8 weeks from Mon 2026-10-26 (VERIFY deadline, open item 3). AutoRAG plumbing is budgeted at
-**one week**; weeks 2–7 go to oracle labelling, the router and evaluation.
+Confirmed dates: **mid-submission Fri 2026-10-31**, **final deadline Fri 2026-11-21** (about 3.5 weeks).
+Ada limits (docs/04): 1 GPU, 1 job, 6 h per job, so GPU work is a queue of sequential 6-hour jobs.
+
+Scope cuts forced by the dates: 3 datasets (NQ, HotpotQA, TriviaQA); FEVER only if time allows; no dense
+mining; latency study optional; RAGAS on ~50 test questions per dataset after the 150-item validation.
 
 ## Roles
 | Person | Owns | Main files |
@@ -11,16 +14,32 @@ Assumes 8 weeks from Mon 2026-10-26 (VERIFY deadline, open item 3). AutoRAG plum
 | **P3: Router** | Features, oracle analysis, router models, baselines, λ selection, ablations, figures (T4, T5, F2–F6) | `features/*`, `oracle.py`, `router/*`, `analysis/plots.py` |
 | **All** | Related work (each reads ~2 core papers and does the reference-list / cited-by check for them), 150-item annotation (P1 and P3 annotate; P2 adjudicates), writing | `docs/01_proposal.md` |
 
-## Weeks
-| Week | Dates | P1 (pipeline) | P2 (evaluation) | P3 (router) | Exit criterion |
-|---|---|---|---|---|---|
-| 1 | Oct 26 – Nov 1 | Envs on Ada, prefetch, **pilot** (100k sub-corpus, 100 q/dataset): retrieval, rerank, both generators; `04_checks` | prepare_qa for all datasets (print examples, VERIFY fields/sizes); metrics + tests; splits on pilot | Features + router code on synthetic data (`python -m ragroute.synthetic`); feature unit checks | Equivalence ≥ [[0.95]] agreement; measured throughput → `budget.py` and `cost_weights.yaml` updated |
-| 2 | Nov 2 – 8 | Full mining + 1M sub-corpus; full retrieval/rerank; start generation (1.5B first) | Leakage report on full sample; decide FEVER from the budget; expected CI widths from pilot variance | Retrieval features on full pools; router dry-run on the 1.5B half-grid | Retrieval caches complete; FEVER in/out decided |
-| 3 | Nov 9 – 15 | 7B generation; rerun failed configs; offline cost record | `collect` → oracle table; T2, T3, T3b; sample 150 items; annotation starts | Oracle analysis: label stats, F4; first Router A/B | Full grid complete (24 × N cells, no gaps) |
-| 4 | Nov 16 – 22 | Latency study (one session); cost calibration final | Annotation + adjudication; judge validation run (`07_judge MODE=validate`); decision on RAGAS | All models × feature sets × 5 seeds; baselines incl. Adaptive-RAG-style; λ selection | Headline T4 draft; judge go/no-go |
-| 5 | Nov 23 – 29 | Cost-weight reruns (named sets), amortisation (T8, T9) | RAGAS on subsample (if go); breakdowns T6, best-per-type T7 with Holm | Ablations T5, importance F6, no-reuse accounting; F2/F3 final | All tables generated from code |
-| 6 | Nov 30 – Dec 6 | Appendix A1, environment table, limitations | Statistics review of every claim (CI attached?) | Error analysis: queries where routers fail vs oracle | Draft sections 3–5 |
-| 7 | Dec 7 – 13 | Write §3, §8 limitations | Write §4, §7 | Write §5–6 | Full draft; resolve every VERIFY |
-| 8 | Dec 14 – 20 | Buffer: reruns, polish, final review, submission | | | Submitted |
+## Mid-submission (Fri 31 Oct)
+**Must have (independent of the GPU question)**
+1. Proposal + design (docs 01–02); verified citations.
+2. Code repo + tests; local AutoRAG validation (top-k = prefix of top-20 exactly; bugs found and fixed).
+3. Real data: 1,000 questions per dataset sampled; grouped split + leakage report (0 shared articles train/test).
+4. Corpus built on Ada: DPR download, full-corpus BM25 mining, sub-corpus.
+5. Budget with measured token counts; Ada constraints and the adjusted plan.
 
-Cut order if behind: latency study → FEVER → MLP router → dense mining → RAGAS at scale (keep the 150-item validation).
+**Should have (needs a vLLM-capable GPU, or the 1080 Ti fallback, by ~29 Oct)**
+6. Pilot grid: 100 questions/dataset × 24 configs → first static table, first oracle-vs-best-static headroom, Pareto plot.
+
+**Stretch:** Router A on the pilot. **Fallback if no GPU by 29 Oct:** retrieval-only pilot (BM25/dense/hybrid recall) + items 1–5.
+
+| Day | Ada / pipeline (P1) | Team |
+|---|---|---|
+| Tue 28 Oct | env install; prepare_qa on Ada; CPU job: download corpus + BM25 index to node scratch, mine candidates; rewrite SLURM scripts for 1 job / 1 GPU / 6 h | Send TA message; read core papers |
+| Wed 29 Oct | 100k pilot sub-corpus, splits, AutoRAG YAMLs; GPU job: retrieval + rerank | Decide 2080 Ti vs 1080 Ti fallback from the TA answer |
+| Thu 30 Oct | GPU job: pilot generation (both generators, 24 configs); collect; first tables + figures | Draft the mid report |
+| Fri 31 Oct | Fill report with pilot numbers | Submit |
+
+## 1–21 Nov (final)
+| Dates | P1 (pipeline) | P2 (evaluation) | P3 (router) | Exit criterion |
+|---|---|---|---|---|
+| 1–7 Nov | 1M sub-corpus; full retrieval/rerank; generation for 3 datasets × 1,000 (≈ 4 sequential 6 h GPU jobs) | collect → oracle table; T2, T3, T3b; sample the 150 judge items | Retrieval features; Router A/B on the 1.5B half-grid as soon as it exists | Full grid complete, no gaps |
+| 8–14 Nov | Cost calibration; cost-weight reruns (T8, T9) | Annotation + adjudication; judge validation; RAGAS on ~50 q/dataset if it passes | All routers + baselines, 5 seeds, λ selection; ablations T5 | Headline T4 + ablations |
+| 15–19 Nov | Appendix (equivalence, environment); optional latency | Breakdowns T6, best-per-type T7 (Holm); check every claim has a CI | Error analysis; final figures F2–F7 | Full draft |
+| 20–21 Nov | Buffer, review, submit | | | Submitted |
+
+Cut order if behind: latency study → MLP router → RAGAS at scale (keep the 150-item validation) → 3rd dataset (TriviaQA) → n per dataset 1,000 → 500.

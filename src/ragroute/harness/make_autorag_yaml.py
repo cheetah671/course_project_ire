@@ -88,6 +88,17 @@ def prompt_node(cfg: dict, task: str = "qa") -> dict:
 def generator_node(cfg: dict, gen_key: str) -> dict:
     g = cfg["models"]["generators"][gen_key]
     gen = cfg["generation"]
+    if gen.get("backend") == "llamacpp":
+        # AutoRAG's openai_llm module pointed at a running llama.cpp server for this generator.
+        # `llm` is only a label AutoRAG accepts; the server serves the Qwen GGUF it was started with.
+        lc = gen["llamacpp"]
+        return {"node_type": "generator", "strategy": {"metrics": GEN_METRICS},
+                "modules": [{
+                    "module_type": "openai_llm", "llm": lc["autorag_model_label"],
+                    "base_url": f"http://127.0.0.1:{lc['port']}/v1", "api_key": "not-used",
+                    "temperature": gen["temperature"], "max_tokens": gen["max_tokens"], "seed": gen["seed"],
+                    "batch": lc["parallel"] * 2,
+                }]}
     return {"node_type": "generator", "strategy": {"metrics": GEN_METRICS},
             "modules": [{
                 "module_type": "vllm", "llm": g["hf_id"],

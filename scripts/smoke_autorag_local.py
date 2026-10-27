@@ -135,10 +135,10 @@ def main():
         yp.write_text(yaml.safe_dump(y, sort_keys=False))
         project = Path(cfg["paths"]["project_dir"])
         ev = Evaluator(str(smoke / "autorag" / "qa.parquet"), str(smoke / "autorag" / "corpus.parquet"), str(project))
-        ev.start_trial(str(yp))
+        ev.start_trial(str(yp), skip_validation=True)  # see run_stages.stage_retrieval
         trial = json.loads((project / "trial.json").read_text())[-1]["trial_name"]
         df = pd.read_parquet(project / trial / "retrieve_node_line" / rs.NODE_DIR[r] / "0.parquet")
-        own = df[f"retrieved_ids{rs.SUFFIX[r]}"].map(list).tolist()
+        own = rs.node_col(df, "retrieved_ids", r).map(list).tolist()
         cached = pools[r]["ids"].map(lambda x: list(x)[:3]).tolist()
         prefix_ok[r] = float(np.mean([a == b for a, b in zip(own, cached)]))
     report["top3_equals_prefix_of_top20"] = prefix_ok
@@ -158,7 +158,7 @@ def main():
         ctx = rs.contexts_for(cache, "hybrid", k, True)
         df = qa.merge(ctx, on="qid")
         prompts = pm.pure(df, prompt=cfg["prompts"]["qa"])["prompts"]
-        n = [len(tok.apply_chat_template(p, add_generation_prompt=True, tokenize=True)) for p in prompts]
+        n = [rs.chat_token_count(tok, p) for p in prompts]
         tokens[f"k{k}"] = {"mean": round(float(np.mean(n)), 1), "max": int(np.max(n))}
     passage_tok = [len(tok(c, add_special_tokens=False)["input_ids"]) for c in corpus["contents"].head(500)]
     report["prompt_tokens"] = tokens

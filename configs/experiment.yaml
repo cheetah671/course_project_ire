@@ -3,6 +3,11 @@
 # Items marked VERIFY must be checked before the full run.
 
 seed: 20261026            # global seed (sampling, splits, router training base seed)
+
+# Pilot mode (mid-submission): set env RAGROUTE_PILOT=1. Overrides below are applied by load_experiment().
+pilot:
+  n_per_dataset: 100
+  subcorpus_size: 100000
 router_seeds: [0, 1, 2, 3, 4]
 
 paths:
@@ -18,7 +23,7 @@ corpus:
   # DPR Wikipedia split: 2018-12-20 dump, 100-word passages, TSV columns id,text,title.
   # Verified 2026-10-27: URL live (4,694,541,059 bytes gz); 21,015,324 passages. Still record a checksum.
   tsv_url: https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
-  tsv_path: ${DATA_ROOT:-data}/raw/psgs_w100.tsv
+  tsv_path: ${DPR_TSV:-data/raw/psgs_w100.tsv}   # .tsv or .tsv.gz (pandas reads gzip directly)
   subcorpus_size: 1000000        # target passages in the AutoRAG corpus (pilot with 100000)
   bm25_mining_depth: 100         # BM25 (Pyserini, full corpus) candidates per query kept in the subcorpus
   dense_mining_depth: 100        # bge dense candidates per query (only if dense mining is enabled)
@@ -88,15 +93,33 @@ models:
   bm25_tokenizer: porter_stemmer
   generators:
     qwen7b:
-      hf_id: Qwen/Qwen2.5-7B-Instruct
+      hf_id: Qwen/Qwen2.5-7B-Instruct          # also the tokenizer used for input-token counts
       params_b: 7.6               # VERIFY from model card
-      tensor_parallel_size: 2     # 2 x 11 GB cards; set 1 on a >=24 GB card
+      tensor_parallel_size: 1     # cs4406 QoS allows 1 GPU per job (vLLM backend only)
+      gguf_repo: Qwen/Qwen2.5-7B-Instruct-GGUF  # llamacpp backend (Apache-2.0)
+      gguf_pattern: "qwen2.5-7b-instruct-q8_0-*.gguf"   # 3 split files, 8.1 GB; llama.cpp loads part 1
     qwen1p5b:
       hf_id: Qwen/Qwen2.5-1.5B-Instruct
       params_b: 1.5               # VERIFY from model card
       tensor_parallel_size: 1
+      gguf_repo: Qwen/Qwen2.5-1.5B-Instruct-GGUF
+      gguf_pattern: "qwen2.5-1.5b-instruct-q8_0.gguf"   # 1.9 GB
 
 generation:
+  # Serving engine. vllm needs compute capability >= 7.5 (RTX 2080 Ti+). Ada's cs4406 jobs so far land on
+  # GTX 1080 Ti (sm_61), so the default is llamacpp: llama.cpp's OpenAI-compatible server + AutoRAG's
+  # openai_llm module. Switch to vllm if the TA confirms 2080 Ti-class nodes.
+  backend: llamacpp              # llamacpp | vllm
+  llamacpp:
+    server_bin: ${LLAMA_SERVER_BIN:-llama-server}   # built by slurm/ada/build_llamacpp.sh
+    lib_path: ${LLAMA_LIB_PATH:-}    # CUDA runtime libs for llama-server only (set by slurm/ada/env.sh)
+    port: 8090
+    parallel: 6                  # concurrent slots (continuous batching)
+    ctx_per_slot: 2560           # prompts are <= ~1.6k tokens at k=10, + 32 output tokens
+    n_gpu_layers: 99             # all layers on the GPU
+    autorag_model_label: gpt-4o-mini   # AutoRAG's openai_llm only accepts names from its OpenAI context
+                                       # table; this is a LABEL only. llama.cpp serves the Qwen GGUF it was
+                                       # started with and ignores the name. No OpenAI API is ever called.
   temperature: 0.0               # greedy
   max_tokens: 32                 # short answers; verification needs ~3 tokens
   max_model_len: 4096
