@@ -16,7 +16,7 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | Every config on every query → oracle labelling | docs/02 D6, D19; `harness/run_stages.py`, `collect.py`, `oracle.py` | ✅ |
 | RQ; (i) oracle ceiling, (ii) Router A, (iii) Router B, on the Pareto frontier vs best static | docs/01 §3; T3/T4; F2 | ✅ ⏳ |
 | Generation-side cost and post-retrieval signals as angles | docs/02 D17, D21–D22 | ✅ |
-| Write-up planned for both outcomes | docs/01 abstract W/S; docs/06 §C.9; T3b null test | ✅ |
+| Write-up planned for both outcomes | docs/01 abstract W/S; docs/06 §C.9; T3 label statistics + held-out T4 | ✅ |
 
 ## 2. Related work
 | Requirement | Where | Status |

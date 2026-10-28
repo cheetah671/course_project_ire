@@ -4,7 +4,7 @@
 #SBATCH -p u22
 #SBATCH --gres=gpu:1
 #SBATCH -c 10
-#SBATCH --mem=48G
+#SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
 #SBATCH --time=06:00:00
 #SBATCH -o /home2/cs4406.11/ragroute_run/logs/%x_%j.out
 # Job B (1 GPU): AutoRAG retrieval trial (BM25 + Chroma ingest, bm25/dense/hybrid top-20), cross-encoder rerank,

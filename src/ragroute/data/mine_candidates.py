@@ -23,10 +23,13 @@ import pandas as pd
 from ragroute.config import load_experiment
 
 
-def mine_bm25(qa: pd.DataFrame, index_name: str, depth: int, threads: int) -> pd.DataFrame:
+def mine_bm25(qa: pd.DataFrame, index_name: str, depth: int, threads: int, index_dir: str | None = None) -> pd.DataFrame:
+    """index_dir: an already-unpacked Lucene index (preferred on Ada: Pyserini's own downloader cannot resume an
+    interrupted 9 GB download, so job A fetches it with `wget -c`, checks the MD5, and unpacks it)."""
     from pyserini.search.lucene import LuceneSearcher
 
-    searcher = LuceneSearcher.from_prebuilt_index(index_name)
+    searcher = LuceneSearcher(index_dir) if index_dir else LuceneSearcher.from_prebuilt_index(index_name)
+    print(f"index: {index_dir or index_name}, documents: {searcher.num_docs}")
     rows = []
     qids, queries = qa["qid"].tolist(), qa["query"].tolist()
     step = 1000
@@ -42,11 +45,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
     ap.add_argument("--threads", type=int, default=16)
+    ap.add_argument("--index-dir", default=None, help="unpacked Lucene index directory (skips Pyserini's downloader)")
     args = ap.parse_args()
     cfg = load_experiment(args.config)
     root = Path(cfg["paths"]["data_root"])
     qa = pd.read_parquet(root / "qa_raw.parquet")
-    out = mine_bm25(qa, cfg["corpus"]["pyserini_index"], cfg["corpus"]["bm25_mining_depth"], args.threads)
+    out = mine_bm25(qa, cfg["corpus"]["pyserini_index"], cfg["corpus"]["bm25_mining_depth"], args.threads,
+                    args.index_dir)
     out.to_parquet(root / "mined_bm25.parquet", index=False)
     print(f"wrote {len(out)} rows; queries with 0 hits: {qa['qid'].nunique() - out['qid'].nunique()}")
 

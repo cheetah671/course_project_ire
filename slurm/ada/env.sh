@@ -20,6 +20,12 @@ export HF_HOME=$NODE_SCRATCH/hf_cache
 export PYSERINI_CACHE=$NODE_SCRATCH/pyserini
 export DPR_TSV=$NODE_SCRATCH/raw/psgs_w100.tsv.gz
 export DPR_URL=https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
+export DPR_BYTES=4694541059
+# Pyserini prebuilt Lucene index of the same 21,015,324 DPR passages (URL/MD5/size from Pyserini 1.6.0 metadata)
+export IDX_URL=https://rgw.cs.uwaterloo.ca/pyserini/indexes/lucene-index.wikipedia-dpr-100w.20210120.d1b9e6.tar.gz
+export IDX_MD5=7b58c08da992b2ea7e96667f0b176651
+export IDX_TAR=$NODE_SCRATCH/pyserini_dl/lucene-index.wikipedia-dpr-100w.20210120.d1b9e6.tar.gz
+export IDX_DIR=$NODE_SCRATCH/pyserini_idx
 
 # llama.cpp backend (GTX 1080 Ti): binary built by build_llamacpp.sh; CUDA libs passed only to llama-server
 export LLAMA_SERVER_BIN=$RUN/llama.cpp/build/bin/llama-server
@@ -29,15 +35,17 @@ export TOKENIZERS_PARALLELISM=false PYTHONHASHSEED=0
 mkdir -p "$DATA_ROOT" "$RESULTS_ROOT" "$RUN/logs" "$NODE_SCRATCH/raw" "$HF_HOME" "$PYSERINI_CACHE" 2>/dev/null || true
 
 py ()     { "$MM" run -n ragroute python "$@"; }
-pymine () { "$MM" run -n ragroute-mining python "$@"; }
+# Pyserini 1.6 builds an OpenAI client at import time and fails without a key; a dummy key is never used.
+pymine () { OPENAI_API_KEY=${OPENAI_API_KEY:-not-used} "$MM" run -n ragroute-mining python "$@"; }
 step ()   { echo; echo "== $(date -Is) $*"; }
 
-log_env () {  # reproducibility record per job
+log_env () {  # reproducibility record per job; never allowed to fail the job
   local tag="$1" f="$RESULTS_ROOT/env_${1}_${SLURM_JOB_ID:-login}.txt"
   {
     echo "job=${SLURM_JOB_ID:-none} host=$(hostname) date=$(date -Is) pilot=${RAGROUTE_PILOT:-0}"
     nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv 2>/dev/null || echo "no GPU"
-    "$MM" run -n ragroute python -c "import torch, autorag, pandas; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), '| autorag', autorag.__version__, '| pandas', pandas.__version__)" 2>/dev/null
-  } > "$f"
-  "$MM" run -n ragroute python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null
+    "$MM" run -n ragroute python -c "import importlib.metadata as m, torch; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), 'cuda_ok', torch.cuda.is_available(), '| autorag', m.version('autorag'), '| pandas', m.version('pandas'))" 2>&1 | tail -1
+  } > "$f" 2>&1 || true
+  "$MM" run -n ragroute python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null || true
+  echo "env logged to $f"
 }

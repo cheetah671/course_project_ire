@@ -10,7 +10,7 @@ mining; latency study optional; RAGAS on ~50 test questions per dataset after th
 | Person | Owns | Main files |
 |---|---|---|
 | **P1: Pipeline & compute** | Ada setup, corpus/mining, AutoRAG harness, generation runs, equivalence/repro checks, cost calibration, offline cost, latency study; later the cost-model analysis (T8, T9, T10, A1) | `data/mine_*`, `data/build_corpus.py`, `harness/*`, `cost.py`, `eval/latency.py`, `slurm/*` |
-| **P2: Evaluation & statistics** | Dataset loading/sampling, splits + leakage, metrics, bootstrap, judge validation (runs annotation, adjudicates), RAGAS, static/oracle tables (T1–T3b, T6, T7, T11, T12) | `data/prepare_qa.py`, `data/splits.py`, `eval/metrics.py`, `eval/judge_validation.py`, `eval/ragas_eval.py`, `stats/*`, `analysis/tables.py` |
+| **P2: Evaluation & statistics** | Dataset loading/sampling, splits + leakage, metrics, bootstrap, judge validation (runs annotation, adjudicates), RAGAS, static/oracle tables (T1–T3, T6, T7, T11, T12) | `data/prepare_qa.py`, `data/splits.py`, `eval/metrics.py`, `eval/judge_validation.py`, `eval/ragas_eval.py`, `stats/*`, `analysis/tables.py` |
 | **P3: Router** | Features, oracle analysis, router models, baselines, λ selection, ablations, figures (T4, T5, F2–F6) | `features/*`, `oracle.py`, `router/*`, `analysis/plots.py` |
 | **All** | Related work (each reads ~2 core papers and does the reference-list / cited-by check for them), 150-item annotation (P1 and P3 annotate; P2 adjudicates), writing | `docs/01_proposal.md` |
 
@@ -37,7 +37,7 @@ mining; latency study optional; RAGAS on ~50 test questions per dataset after th
 ## 1–21 Nov (final)
 | Dates | P1 (pipeline) | P2 (evaluation) | P3 (router) | Exit criterion |
 |---|---|---|---|---|
-| 1–7 Nov | 1M sub-corpus; full retrieval/rerank; generation for 3 datasets × 1,000 (≈ 4 sequential 6 h GPU jobs) | collect → oracle table; T2, T3, T3b; sample the 150 judge items | Retrieval features; Router A/B on the 1.5B half-grid as soon as it exists | Full grid complete, no gaps |
+| 1–7 Nov | 1M sub-corpus; full retrieval/rerank; generation for 3 datasets × 1,000 (≈ 4 sequential 6 h GPU jobs) | collect → oracle table; T2, T3; sample the 150 judge items | Retrieval features; Router A/B on the 1.5B half-grid as soon as it exists | Full grid complete, no gaps |
 | 8–14 Nov | Cost calibration; cost-weight reruns (T8, T9) | Annotation + adjudication; judge validation; RAGAS on ~50 q/dataset if it passes | All routers + baselines, 5 seeds, λ selection; ablations T5 | Headline T4 + ablations |
 | 15–19 Nov | Appendix (equivalence, environment); optional latency | Breakdowns T6, best-per-type T7 (Holm); check every claim has a CI | Error analysis; final figures F2–F7 | Full draft |
 | 20–21 Nov | Buffer, review, submit | | | Submitted |

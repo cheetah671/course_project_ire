@@ -232,15 +232,36 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
   stratified by dataset (each resample keeps the test set's dataset mix); 95% percentile CI;
   two-sided null-centred p-value. Used for every config-vs-config and router-vs-baseline claim.
 - **Seeds.** Decoding is greedy, so there is no sampling seed for generation. Its residual
-  nondeterminism is measured. Router training uses 5 seeds (0–4); per-query outcomes are averaged over
+  nondeterminism is measured. Pilot, llama.cpp with 6 parallel slots: 97.3% of answers are identical
+  when a config is re-run (dense-k3-rr0-1.5B, 300 questions; Ada job 44097). Cause: results depend on
+  which requests share a GPU batch. We keep parallel serving (one request at a time would [[estimate, not measured]] roughly double
+  or triple generation time) and report the flip rate as a noise floor; re-measure it for 7B in the full run. Router training uses 5 seeds (0–4); per-query outcomes are averaged over
   seeds before the query bootstrap, and seed SD is reported separately.
 - **Multiple comparisons.** Holm–Bonferroni within each family (e.g. all 23 configs vs the best; all
   router variants vs best static).
 - **Per-question-type "best config" claims** (`best_config_stability`): bootstrap frequency of each
   config being best, and a paired CI for (best − runner-up). The claim is made only if that CI excludes 0.
-- **Oracle null** (`oracle.oracle_null`): permute each config's outcomes across queries within dataset
-  (200 permutations) and recompute the oracle. "max over 24 noisy outcomes" inflates the oracle; only
-  real − null is potentially predictable headroom.
+- **Oracle null: dropped (28 Oct, after the pilot).**
+  - *Decision:* no oracle-level null test. Whether the oracle headroom is predictable is answered only
+    out of sample: routers trained on train, λ chosen on dev, evaluated on the grouped test split (T4),
+    with paired bootstrap CIs against the best static config.
+  - *Alternatives tried on the pilot:*
+    1. *Permute each config's outcomes across queries.* This also destroys query difficulty, because
+       configs agree on which questions are hard (pilot test: 18/60 questions fail under all 24 configs,
+       8/60 succeed under all). Nearly every permuted question then has some success, so the null oracle
+       was 0.9999 against a real oracle of 0.787 (job 44053). That tests "are configs correlated", not
+       "is there routing signal".
+    2. *Parametric bootstrap from an additive logistic model* (query effect + config effect, no
+       interaction). The ~24 outcomes per query are too few to estimate a query effect. With a strong
+       L2 penalty the null is far too high: p = 1.0 even on toy data with no interaction. With a weak
+       penalty it rejects too often: p < 0.05 in 9/10 toy datasets with no interaction. The answer
+       depends on the penalty, so it is not usable.
+  - *Why:* for binary success, the oracle ("some config succeeds") is fixed by each question's number of
+    successful configs, i.e. by difficulty. Shuffling which configs succeed, while keeping each
+    question's difficulty and each config's strength, changes neither the oracle nor any static config.
+    So the oracle's headroom over best static can never by itself show that routing signal exists.
+  - *Risk:* we report the oracle as a ceiling only, with label statistics (all-fail / all-succeed / mixed),
+    and make no claim that it is "predictable" until a router achieves it on held-out data.
 
 ---
 

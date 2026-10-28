@@ -23,7 +23,7 @@ from scipy.stats import kendalltau
 
 from ragroute.config import load_cost_weights, load_experiment
 from ragroute.cost import amortised_offline_per_query, random_weight_draws, scalar_cost
-from ragroute.oracle import label_statistics, oracle_best, oracle_null, wide
+from ragroute.oracle import label_statistics, oracle_best, wide
 from ragroute.router.policies import pareto_frontier
 from ragroute.stats.bootstrap import best_config_stability, bootstrap_mean_ci, paired_bootstrap
 
@@ -146,7 +146,6 @@ def main():
 
     save(static_grid(runs), "T2_static_grid")
     save(oracle_vs_static(runs), "T3_oracle_vs_static")
-    save(pd.DataFrame([oracle_null(runs)]), "T3b_oracle_null_permutation")
     save(best_by_qtype(runs), "T7_best_by_qtype")
     save(weight_sensitivity(runs, weights).describe(include="all").reset_index(), "T8_weight_sensitivity_summary")
     picks_path = res / "router" / "picks.parquet"

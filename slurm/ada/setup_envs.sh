@@ -10,7 +10,8 @@ PIP="--no-cache-dir --progress-bar off"
 
 step "1. ragroute: PyTorch with sm_61 support (cu126)"
 "$MM" run -n ragroute python -m pip install $PIP "torch==2.14.1" --index-url https://download.pytorch.org/whl/cu126
-"$MM" run -n ragroute python -c "import torch; a=torch._C._cuda_getArchFlags(); print('torch', torch.__version__, a); assert 'sm_61' in a, 'no sm_61 kernels'"
+# GTX 1080 Ti is sm_61; sm_60 kernels run on it (same major architecture), so either is enough
+"$MM" run -n ragroute python -c "import torch; a=torch._C._cuda_getArchFlags(); print('torch', torch.__version__, a); assert 'sm_61' in a or 'sm_60' in a, 'no Pascal kernels'"
 "$MM" run -n ragroute python -m pip install $PIP --no-deps -e "$CODE"
 
 step "2. ragroute-mining: JDK 21 + CPU torch + pyserini"

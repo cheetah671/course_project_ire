@@ -26,8 +26,10 @@ Outputs in {data_root}:
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -44,8 +46,15 @@ CHUNK_ROWS = 500_000
 INTRO_PASSAGES = 2
 
 
+def norm_title(t: str) -> str:
+    """One key for Wikipedia titles from both sources. HotpotQA (2017 dump) and DPR (Dec 2018 dump) differ in
+    Unicode form (decomposed vs composed accents, e.g. "Václav Havel") and HotpotQA keeps HTML entities
+    ("Army &amp; Navy Stores"). Before this fix 9 of the 200 pilot HotpotQA gold titles were missed (Ada job 44382)."""
+    return unicodedata.normalize("NFC", html.unescape(t.replace("_", " "))).strip()
+
+
 def title_key(s: pd.Series) -> pd.Series:
-    return s.str.replace("_", " ", regex=False).str.strip()
+    return s.map(norm_title)
 
 
 def _reader(tsv_path, usecols=None):
@@ -87,7 +96,7 @@ def build(cfg: dict) -> None:
     stats = {"mined_sources": len(mined), "n_queries": len(qa)}
 
     # ---- pass 1: titles -> passage ids
-    need = {t.replace("_", " ").strip() for ts in qa["gold_titles"] for t in ts}
+    need = {norm_title(t) for ts in qa["gold_titles"] for t in ts}
     cap = max(c["article_neighbours"], INTRO_PASSAGES)
     all_ids, title_to_ids = pass1_titles(c["tsv_path"], need, cap)
     stats["full_corpus_passages"] = int(len(all_ids))
@@ -167,12 +176,12 @@ def build(cfg: dict) -> None:
             groups = [[f"{prefix}{i}" for i in ids]] if ids else [[]]
             titles = list(dict.fromkeys(passage_title[i] for i in ids))[:3]
         elif row.dataset == "hotpotqa":
-            groups = [[f"{prefix}{i}" for i in title_to_ids.get(t.replace("_", " ").strip(), [])[:INTRO_PASSAGES]]
+            groups = [[f"{prefix}{i}" for i in title_to_ids.get(norm_title(t), [])[:INTRO_PASSAGES]]
                       for t in row.gold_titles]
             groups = [g for g in groups if g] or [[]]
             titles = list(row.gold_titles)
         else:  # fever / other verification
-            ids = [i for t in row.gold_titles for i in title_to_ids.get(t.replace("_", " ").strip(), [])[:INTRO_PASSAGES]]
+            ids = [i for t in row.gold_titles for i in title_to_ids.get(norm_title(t), [])[:INTRO_PASSAGES]]
             groups = [[f"{prefix}{i}" for i in ids]] if ids else [[]]
             titles = list(row.gold_titles)
         ret_gt.append(groups)

@@ -9,7 +9,6 @@ Every table and figure is produced by code (`analysis/tables.py`, `analysis/plot
 | T1 | Datasets and corpus | dataset × {source split, size (VERIFY), sampled n, train/dev/test, gold-mapping rate}; corpus: full passages, sub-corpus composition (mined / gold neighbours / random) | `corpus_stats.json`, `leakage_report.json` |
 | T2 | Static grid | 24 configs × dataset: EM, F1 [95% CI], input tokens, output tokens, rerank pairs, index queries, scalar cost, cost CV | `T2_static_grid.csv` |
 | T3 | Oracle ceiling | per dataset + ALL: best static (chosen on train), oracle quality, headroom [CI], all-fail / all-succeed / mixed shares, #distinct oracle-best configs, top-label share | `T3_oracle_vs_static.csv` |
-| T3b | Oracle vs permutation null | real oracle, null mean, null 95th pct, p, predictable-headroom upper bound | `T3b_oracle_null_permutation.csv` |
 | T4 | **Headline: routers vs best static** | {Router A, Router B (best model), Adaptive-RAG-style, per-dataset static, random, cheapest, oracle} × {iso-cost ΔQ [CI], p; iso-quality cost saving % [CI on ΔQ]; gap closed} | `headline.csv` |
 | T5 | Ablations | feature set {A_noDS, A, A_noEmb, B, B_noDS, D_only, R_only} × model {LR, GBDT, MLP}: gap closed (mean ± seed SD), iso-cost ΔQ | `headline.csv` |
 | T6 | Where routing helps / does not | Router B vs static by dataset, hops, HotpotQA type: n, ΔQ [CI], p (Holm-adjusted) | `T6_breakdown_*.csv` |
@@ -41,7 +40,7 @@ contrast, so every coloured curve carries a direct text label.
 1. **Sanity:** equivalence (A1), gold-mapping rates (T1), leakage report, greedy reproducibility.
 2. **Static landscape (T2, F2 points):** which configs sit on the static frontier; paired bootstrap of
    each config vs the best static (Holm within the family).
-3. **Oracle (T3, T3b, F4):** headroom vs best static; how much survives the permutation null; label
+3. **Oracle (T3, F4):** headroom vs best static (a ceiling only, never called predictable); label
    statistics (if > [[x]]% of queries are all-fail or all-succeed, routing has little room by construction).
 4. **Routers (T4, F2, F3):** iso-cost and iso-quality comparisons on test with λ chosen on dev; gap closed.
 5. **Ablations (T5, F5, F6):** does Router B beat A after charging probe cost (reuse and no-reuse)?
@@ -51,8 +50,8 @@ contrast, so every coloured curve carries a direct text label.
 8. **Secondary (T10–T12):** latency, judge validation, RAGAS.
 9. **Both outcomes are planned for:**
    - *Router wins* (gap closed CI > 0): emphasise the cost saving at iso-quality and which signals matter.
-   - *Small gain* (CI includes 0, or headroom ≈ null): lead with T3b. A narrow predictable ceiling
-     explains why static best-practice recipes work; report the regions where routing helps, if any,
+   - *Small gain* (gap-closed CI includes 0): lead with T3 label statistics and T4. Headroom that no
+     router recovers out of sample explains why static best-practice recipes work; report the regions where routing helps, if any,
      and the upper bound on what any router could gain on these benchmarks.
 
 ## D. Final report template (8 pages + appendix; adapt to the course format)
@@ -63,7 +62,7 @@ Title / authors / abstract (version W or S, docs/01_proposal.md)
 3 Setup                                                                             ~1.5 p
   3.1 Data and corpus (T1; fixed chunking; sub-corpus)  3.2 Grid and harness (F1)
   3.3 Metrics and normalisation        3.4 Cost model (offline vs marginal)
-4 Oracle labelling: the static landscape and the ceiling (T2 excerpt, T3, T3b, F4)  ~1 p
+4 Oracle labelling: the static landscape and the ceiling (T2 excerpt, T3, F4)  ~1 p
 5 Routing (method: formulation, features, baselines, λ selection)                  ~0.75 p
 6 Results                                                                           ~2 p
   6.1 Headline (T4, F2)  6.2 Router A vs B and the price of signals (T5, F5, F6)

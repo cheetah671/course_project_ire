@@ -74,37 +74,6 @@ def oracle_summary(runs: pd.DataFrame, lambdas, split: str = "test") -> pd.DataF
     return pd.DataFrame(rows)
 
 
-def oracle_null(runs: pd.DataFrame, split: str = "test", n_perm: int = 200, seed: int = 0) -> dict:
-    """How much of the oracle ceiling is just 'max over 24 noisy outcomes'?
-
-    Null: config identity carries no per-query information. Within each dataset, each config's column of
-    per-query outcomes is permuted independently across queries (keeps every config's mean, destroys any
-    query-config association). The oracle on permuted data is what pure noise would give. Report the real
-    oracle_best quality against this null distribution; the *predictable* headroom is at most
-    real - null_mean, and a router can only hope to recover part of that.
-    """
-    rng = np.random.default_rng(seed)
-    sub = runs[runs["split"] == split]
-    Qd, Cd = wide(sub, "quality"), wide(sub, "cost")
-    ds = sub.drop_duplicates("qid").set_index("qid").loc[Qd.index, "dataset"].to_numpy()
-    Q, C = Qd.to_numpy(), Cd.to_numpy()
-    real = realised(Q, C, oracle_best(Q, C))[0].mean()
-    nulls = []
-    for _ in range(n_perm):
-        Qp = Q.copy()
-        for d in np.unique(ds):
-            rows = np.flatnonzero(ds == d)
-            for j in range(Q.shape[1]):
-                Qp[rows, j] = Q[rng.permutation(rows), j]
-        nulls.append(realised(Qp, C, oracle_best(Qp, C))[0].mean())
-    nulls = np.array(nulls)
-    best_static = Q.mean(axis=0).max()
-    return {"oracle_real": float(real), "oracle_null_mean": float(nulls.mean()),
-            "oracle_null_95": float(np.quantile(nulls, 0.95)), "best_static_on_split": float(best_static),
-            "p_value": float((1 + (nulls >= real).sum()) / (1 + n_perm)),
-            "predictable_headroom_upper": float(real - nulls.mean())}
-
-
 def label_statistics(runs: pd.DataFrame, success_tau: float = 1.0) -> pd.DataFrame:
     """Per dataset: share of queries where all configs fail / all succeed / some succeed (router-relevant),
     and how often each config is the oracle_best pick (label imbalance diagnostics)."""

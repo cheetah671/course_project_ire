@@ -12,7 +12,7 @@ Feature groups -> feature sets (ablations):
     config = encoded config (group 3) is always part of the pair features.
     Group 4 (observed quality / cost of the pair) is the TRAINING TARGET, never an input.
 
-Outputs ({results}/router/):
+Outputs ({results}/router/; with --no-reuse: {results}/router_noreuse/):
     curves.parquet     policy curves on dev and test (overall, per dataset, per hops)
     picks.parquet      per-query test picks at the selected lambdas (input to bootstrap/plots)
     headline.csv       iso-cost and iso-quality comparisons vs best static, with paired bootstrap CIs
@@ -116,7 +116,8 @@ def overhead_kind(groups: list[str]) -> str:
 # ------------------------------------------------------------------ main experiment
 def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int], reuse: bool = True):
     res = Path(cfg["paths"]["results_dir"])
-    out = res / "router"
+    # the conservative (no probe reuse) run is a sensitivity check: keep it apart so it never overwrites the main run
+    out = res / ("router" if reuse else "router_noreuse")
     out.mkdir(parents=True, exist_ok=True)
     runs = pd.read_parquet(res / "runs_scored.parquet")
     meta = pd.read_parquet(Path(cfg["paths"]["data_root"]) / "qa_meta.parquet")

@@ -22,7 +22,7 @@ src/ragroute/
   eval/judge_validation.py   150-item sample -> annotation sheet; agreement statistics
   eval/latency.py            same-session latency study
   features/query_features.py, retrieval_features.py, build_features.py
-  oracle.py                  oracle policies, label statistics, permutation null
+  oracle.py                  oracle policies, label statistics
   cost.py                    cost model, router overhead accounting, weight draws
   router/models.py           fractional LR, LightGBM, MLP
   router/policies.py         static/per-group/random baselines, router selection, Pareto helpers

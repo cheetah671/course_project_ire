@@ -72,6 +72,9 @@ def gpu_name() -> str:
 # ------------------------------------------------------------------ retrieval
 def stage_retrieval(cfg, force=False):
     from autorag.evaluator import Evaluator
+    from ragroute.harness import autorag_patches
+
+    autorag_patches.apply()  # batched Chroma id checks / inserts (large corpora)
 
     data, cache, project = _paths(cfg)
     if not force and all((cache / "retrieval" / f"{r}.parquet").exists() for r in RETRIEVERS):
@@ -256,9 +259,10 @@ def _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache: Path, subdir: str
 
 
 def check_prompt_token_count(cfg, gen_key: str, n: int = 20):
-    """Pilot check: tokenizer-based input count == vLLM's own prompt_token_ids length (run once, week 1)."""
+    """Pilot check: our tokenizer-based input-token count == the serving engine's own prompt length.
+    vLLM: len(prompt_token_ids). llama.cpp: usage.prompt_tokens (this also checks that llama.cpp applies the same
+    chat template as the HF tokenizer). Writes {results}/token_count_check_{gen_key}.json."""
     from transformers import AutoTokenizer
-    from vllm import LLM, SamplingParams
 
     _, cache, project = _paths(cfg)
     g = cfg["models"]["generators"][gen_key]
@@ -271,12 +275,33 @@ def check_prompt_token_count(cfg, gen_key: str, n: int = 20):
         contents = "\n\n".join(ctx.loc[qid, "retrieved_contents"])
         msgs.append([{k: v.format(query=qa.loc[qid, "query"], retrieved_contents=contents) if k == "content" else v
                       for k, v in m.items()} for m in cfg["prompts"]["qa"]])
-    llm = LLM(g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=cfg["generation"]["dtype"],
-              max_model_len=cfg["generation"]["max_model_len"])
-    outs = llm.chat(msgs, SamplingParams(max_tokens=1, temperature=0))
     ours = [chat_token_count(tok, m) for m in msgs]
-    theirs = [len(o.prompt_token_ids) for o in outs]
-    print("tokenizer vs vLLM prompt lengths equal:", ours == theirs, list(zip(ours, theirs))[:5])
+    gen = cfg["generation"]
+    if gen["backend"] == "vllm":
+        from vllm import LLM, SamplingParams
+
+        llm = LLM(g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+                  max_model_len=gen["max_model_len"])
+        outs = llm.chat(msgs, SamplingParams(max_tokens=1, temperature=0))
+        theirs = [len(o.prompt_token_ids) for o in outs]
+    else:
+        import requests
+
+        from ragroute.harness.llamacpp import LlamaServer, ensure_gguf
+
+        lc = gen["llamacpp"]
+        with LlamaServer(lc["server_bin"], ensure_gguf(g["gguf_repo"], g["gguf_pattern"]), lc["port"], lc["parallel"],
+                         lc["ctx_per_slot"], lc["n_gpu_layers"], gen["seed"],
+                         str(cache / f"llama_server_{gen_key}_tokcheck.log"), lib_path=lc.get("lib_path")) as srv:
+            theirs = [requests.post(f"{srv.url}/v1/chat/completions", timeout=120,
+                                    json={"messages": m, "max_tokens": 1, "temperature": 0}).json()["usage"]["prompt_tokens"]
+                      for m in msgs]
+    report = {"generator": gen_key, "backend": gen["backend"], "n": len(msgs),
+              "equal_rate": float(sum(a == b for a, b in zip(ours, theirs)) / len(msgs)),
+              "pairs_ours_engine": list(zip(ours, theirs))}
+    out = Path(cfg["paths"]["results_dir"]) / f"token_count_check_{gen_key}.json"
+    out.write_text(json.dumps(report, indent=2))
+    print(f"tokenizer vs {gen['backend']} prompt lengths: equal_rate={report['equal_rate']}", report["pairs_ours_engine"][:5])
 
 
 def main():

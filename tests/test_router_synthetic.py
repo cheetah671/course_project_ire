@@ -22,10 +22,6 @@ def test_router_learns_synthetic_structure(tmp_path):
     assert len(tables.static_grid(runs)) == 24 * 3
     assert len(tables.weight_sensitivity(runs, load_cost_weights())) > 4
     assert not tables.best_by_qtype(runs).empty
-    from ragroute.oracle import oracle_null
-    nul = oracle_null(runs, n_perm=20)
-    # synthetic outcomes are noisy Bernoulli draws: the null oracle is already far above best static
-    assert nul["oracle_null_mean"] > nul["best_static_on_split"]
     out = tmp_path / "figs"
     out.mkdir()
     plots.fig_pareto(curves, out, "router_A_gbdt", "router_B_gbdt")

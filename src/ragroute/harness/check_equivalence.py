@@ -30,6 +30,9 @@ def main():
     ap.add_argument("--n", type=int, default=50)
     args = ap.parse_args()
     from autorag.evaluator import Evaluator
+    from ragroute.harness import autorag_patches
+
+    autorag_patches.apply()  # batched Chroma id checks / inserts (large corpora)
 
     cfg = load_experiment(args.config)
     data = Path(cfg["paths"]["data_root"])
@@ -56,8 +59,9 @@ def main():
     if cfg["generation"]["backend"] == "llamacpp":
         # the YAML's openai_llm node talks to a llama.cpp server for this config's generator
         from ragroute.config import RagConfig as _RC
-        from ragroute.harness.llamacpp import LlamaServer, ensure_gguf
+        from ragroute.harness.llamacpp import LlamaServer, ensure_gguf, patch_openai_llm
 
+        patch_openai_llm()  # same get_result as the staged runner's LlamaCppGenerator (stock one breaks on llama.cpp)
         g = cfg["models"]["generators"][_RC.from_id(args.config_id).generator]
         lc = cfg["generation"]["llamacpp"]
         with LlamaServer(lc["server_bin"], ensure_gguf(g["gguf_repo"], g["gguf_pattern"]), lc["port"],

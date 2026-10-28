@@ -19,9 +19,8 @@ only the question recovers [[x]]% of that gap; adding cheap post-retrieval signa
 saving [[z]]% marginal cost at matched quality (paired bootstrap, 95% CI [[...]]).
 
 **Version S (small gain).** ... The per-query oracle exceeds the best static configuration by only
-[[Δ]] F1, and a permutation test shows that [[most]] of this headroom is consistent with outcome noise
-rather than predictable query–configuration structure. Routers recover [[x]]% of the gap, which is not
-significant ([[CI]]). This explains why static best-practice recipes work well on these benchmarks,
+[[Δ]] F1, but routers trained on held-out questions recover only [[x]]% of that gap, which is not
+significant ([[CI]]): most of the per-query headroom is not predictable from the signals we tested. This explains why static best-practice recipes work well on these benchmarks,
 and identifies [[where, e.g. multi-hop bridge questions]] as the only region where routing pays.
 
 ## 1. Introduction and motivation
@@ -40,7 +39,7 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
 - Contributions (phrase according to outcome):
   1. A fully crossed, cost-instrumented 24-config grid with per-query oracle labels, released as a table.
   2. The oracle ceiling vs best static config on the cost–quality Pareto frontier, with a
-     permutation test separating predictable headroom from noise.
+     label statistics (all-fail / all-succeed / mixed) showing where routing has room at all.
   3. Routers from question-only features and from cheap post-retrieval signals, with the signal cost
      charged to the router, compared with static, per-dataset and Adaptive-RAG-style baselines.
   4. A countable cost model (offline vs marginal, amortisation, weight sensitivity).
@@ -63,7 +62,8 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
 
 ## 3. Research questions and hypotheses
 - **RQ1 (ceiling).** How much better is the per-query oracle than the best static config, at equal
-  marginal cost, and how much of that gap survives a permutation null (outcome noise)?
+  marginal cost, and on what share of questions do configurations disagree at all? (Whether that gap is
+  *predictable* is answered out of sample by RQ2–RQ3; an oracle-level null cannot answer it: docs/02 D16.)
 - **RQ2 (Router A).** What fraction of the predictable gap does a router recover from the question
   text alone (before any retrieval)?
 - **RQ3 (Router B).** What does it recover once cheap post-retrieval signals are added, *after*
@@ -72,7 +72,7 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
   does routing help, and where does it not?
 - **RQ5 (cost model).** Are conclusions stable under cost-weight changes and amortisation factors?
 
-Hypotheses (pre-registered direction, not values): H1 oracle > static, beyond the null. H2 Router B ≥
+Hypotheses (pre-registered direction, not values): H1 oracle > static (CI excludes 0). H2 Router B ≥
 Router A at matched cost. H3 gains concentrate in multi-hop questions. H4 a large share of routing
 value comes from dataset identity alone (tested by the per-dataset static baseline and the `D_only` ablation).
 
@@ -133,12 +133,55 @@ Still to do: read each paper before citing a claim from it, pull their reference
    Augmented Generation. EACL 2024 System Demonstrations, pp. 150–158. arXiv:2309.15217.
 8. ✔ Nicholas Pipitone, Ghita Houir Alami. LegalBench-RAG: A Benchmark for Retrieval-Augmented Generation in the
    Legal Domain. arXiv:2408.10343, 2024.
-Datasets/tools we use (cite their original papers): Natural Questions (Kwiatkowski et al., TACL 2019);
-NQ-open (Lee et al., ACL 2019); HotpotQA (Yang et al., EMNLP 2018); TriviaQA (Joshi et al., ACL 2017);
-FEVER (Thorne et al., NAACL 2018); KILT (Petroni et al., NAACL 2021) if FEVER-KILT is used; DPR
-(Karpukhin et al., EMNLP 2020); Reciprocal Rank Fusion (Cormack et al., SIGIR 2009); BGE / C-Pack
-(Xiao et al., 2023); Sentence-BERT (Reimers & Gurevych, EMNLP 2019) and MS MARCO (Nguyen et al., 2016)
-for the cross-encoder; Qwen2.5 technical report (2024); vLLM / PagedAttention (Kwon et al., SOSP 2023);
-Pyserini (Lin et al., SIGIR 2021); Cohen's kappa (Cohen, 1960); bootstrap significance testing for NLP
-(Koehn, EMNLP 2004; Berg-Kirkpatrick et al., EMNLP 2012). These dataset/tool references are not yet
-checked: VERIFY each before submission.
+Datasets, models, methods and tools. Checked on 2026-10-28 against the ACL Anthology, arXiv, or the DOI record
+(OpenAlex), unless marked "software":
+9. ✔ Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redfield, Michael Collins, Ankur Parikh, Chris Alberti, Danielle
+   Epstein, Illia Polosukhin, Jacob Devlin, Kenton Lee, Kristina Toutanova, Llion Jones, Matthew Kelcey, Ming-Wei
+   Chang, Andrew M. Dai, Jakob Uszkoreit, Quoc Le, Slav Petrov. Natural Questions: A Benchmark for Question
+   Answering Research. TACL 7:452–466, 2019. doi:10.1162/tacl_a_00276.
+10. ✔ Kenton Lee, Ming-Wei Chang, Kristina Toutanova. Latent Retrieval for Weakly Supervised Open Domain Question
+    Answering. ACL 2019, pp. 6086–6096. doi:10.18653/v1/P19-1612. (Source of the NQ-open split.)
+11. ✔ Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William Cohen, Ruslan Salakhutdinov, Christopher D. Manning.
+    HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering. EMNLP 2018, pp. 2369–2380.
+    doi:10.18653/v1/D18-1259.
+12. ✔ Mandar Joshi, Eunsol Choi, Daniel Weld, Luke Zettlemoyer. TriviaQA: A Large Scale Distantly Supervised Challenge
+    Dataset for Reading Comprehension. ACL 2017, pp. 1601–1611. doi:10.18653/v1/P17-1147.
+13. ✔ James Thorne, Andreas Vlachos, Christos Christodoulopoulos, Arpit Mittal. FEVER: a Large-scale Dataset for Fact
+    Extraction and VERification. NAACL 2018, pp. 809–819. doi:10.18653/v1/N18-1074. (Only if FEVER is run.)
+14. ✔ Fabio Petroni, Aleksandra Piktus, Angela Fan, Patrick Lewis, Majid Yazdani, Nicola De Cao, James Thorne,
+    Yacine Jernite, Vladimir Karpukhin, Jean Maillard, Vassilis Plachouras, Tim Rocktäschel, Sebastian Riedel.
+    KILT: a Benchmark for Knowledge Intensive Language Tasks. NAACL 2021, pp. 2523–2544.
+    doi:10.18653/v1/2021.naacl-main.200. (Source of our FEVER split.)
+15. ✔ Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, Wen-tau Yih.
+    Dense Passage Retrieval for Open-Domain Question Answering. EMNLP 2020, pp. 6769–6781.
+    doi:10.18653/v1/2020.emnlp-main.550. (Source of the 21M-passage Wikipedia corpus.)
+16. ✔ Gordon V. Cormack, Charles L. A. Clarke, Stefan Büttcher. Reciprocal Rank Fusion Outperforms Condorcet and
+    Individual Rank Learning Methods. SIGIR 2009, pp. 758–759. doi:10.1145/1571941.1572114.
+17. ✔ Shitao Xiao, Zheng Liu, Peitian Zhang, Niklas Muennighoff, Defu Lian, Jian-Yun Nie. C-Pack: Packed Resources For
+    General Chinese Embeddings. SIGIR 2024. arXiv:2309.07597. (Paper for the BGE embedding models;
+    we use `BAAI/bge-base-en-v1.5`.)
+18. ✔ Nils Reimers, Iryna Gurevych. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. EMNLP-IJCNLP 2019,
+    pp. 3982–3992. doi:10.18653/v1/D19-1410. (Library behind our cross-encoder; we use
+    `cross-encoder/ms-marco-MiniLM-L-6-v2`.)
+19. ✔ Payal Bajaj, Daniel Campos, Nick Craswell, Li Deng, Jianfeng Gao, Xiaodong Liu, Rangan Majumder, Andrew McNamara,
+    Bhaskar Mitra, Tri Nguyen, Mir Rosenberg, Xia Song, Alina Stoica, Saurabh Tiwary, Tong Wang. MS MARCO: A Human
+    Generated MAchine Reading COmprehension Dataset. arXiv:1611.09268, 2016. (Training data of the cross-encoder.
+    Cite as Bajaj et al. for this arXiv version: its author list is alphabetical.)
+20. ✔ Qwen Team (An Yang et al.). Qwen2.5 Technical Report. arXiv:2412.15115, 2024.
+21. ✔ Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang,
+    Ion Stoica. Efficient Memory Management for Large Language Model Serving with PagedAttention. SOSP 2023,
+    pp. 611–626. doi:10.1145/3600006.3613165. (Cite only if the vLLM backend is used.)
+22. ✔ Jimmy Lin, Xueguang Ma, Sheng-Chieh Lin, Jheng-Hong Yang, Ronak Pradeep, Rodrigo Nogueira. Pyserini: A Python
+    Toolkit for Reproducible Information Retrieval Research with Sparse and Dense Representations. SIGIR 2021,
+    pp. 2356–2362. doi:10.1145/3404835.3463238. (The arXiv preprint 2102.10073 has a different title, "... An
+    Easy-to-Use Python Toolkit to Support Replicable IR Research ...". Cite the SIGIR version.)
+23. ✔ Jacob Cohen. A Coefficient of Agreement for Nominal Scales. Educational and Psychological Measurement 20(1):37–46,
+    1960. doi:10.1177/001316446002000104.
+24. ✔ Philipp Koehn. Statistical Significance Tests for Machine Translation Evaluation. EMNLP 2004, pp. 388–395.
+    (Anthology W04-3250; no DOI.)
+25. ✔ Taylor Berg-Kirkpatrick, David Burkett, Dan Klein. An Empirical Investigation of Statistical Significance in NLP.
+    EMNLP-CoNLL 2012, pp. 995–1005. (Anthology D12-1091; no DOI.)
+Software (cite by URL and the exact version we ran; versions from the Ada job logs `env_gridB_43945*.txt`):
+AutoRAG 0.3.27 (paper = ref. 2); llama.cpp, github.com/ggml-org/llama.cpp, release b11936 (commit 27b7a8a);
+Qwen2.5-1.5B/7B-Instruct Q8_0 GGUF weights (Hugging Face, Qwen); chromadb 1.5.9; rank-bm25 0.2.2;
+sentence-transformers 6.2.0; transformers 5.21.0; torch 2.14.1+cu126; scikit-learn 1.9.1; Pyserini 1.6.0.

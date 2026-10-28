@@ -68,16 +68,32 @@ class LlamaServer:
                 self.proc.kill()
 
 
+async def llamacpp_get_result(self, prompt, **kwargs):
+    """Replacement for AutoRAG OpenAILLM.get_result against llama.cpp. The stock version requests logprobs and
+    re-encodes each returned token string with tiktoken (`encode(x.token)[0]`); some llama.cpp token strings encode
+    to nothing, which raises IndexError (Ada job 44080). We return the text and the server's output-token count
+    (placeholder token ids / logprobs, which we never use). The generated text itself is unaffected."""
+    from autorag.nodes.generator.openai_llm import parse_prompt
+
+    response = await self.client.chat.completions.create(
+        model=self.llm, messages=parse_prompt(prompt), n=1, **kwargs)
+    choice = response.choices[0]
+    n_out = int(response.usage.completion_tokens) if response.usage else 0
+    return choice.message.content or "", [0] * n_out, [0.0] * n_out
+
+
+def patch_openai_llm() -> None:
+    """Make AutoRAG's own `openai_llm` module (used when AutoRAG runs a YAML end to end) llama.cpp-compatible."""
+    from autorag.nodes.generator.openai_llm import OpenAILLM
+
+    OpenAILLM.get_result = llamacpp_get_result
+
+
 def make_generator(project_dir: str, base_url: str, label: str, batch: int):
     """AutoRAG OpenAILLM subclass bound to a llama.cpp server (import is lazy: autorag only on the cluster)."""
-    from autorag.nodes.generator.openai_llm import OpenAILLM, parse_prompt
+    from autorag.nodes.generator.openai_llm import OpenAILLM
 
     class LlamaCppGenerator(OpenAILLM):
-        async def get_result(self, prompt, **kwargs):
-            response = await self.client.chat.completions.create(
-                model=self.llm, messages=parse_prompt(prompt), n=1, **kwargs)
-            choice = response.choices[0]
-            n_out = int(response.usage.completion_tokens) if response.usage else 0
-            return choice.message.content or "", [0] * n_out, [0.0] * n_out
+        get_result = llamacpp_get_result
 
     return LlamaCppGenerator(project_dir, llm=label, batch=batch, base_url=f"{base_url}/v1", api_key="not-used")
