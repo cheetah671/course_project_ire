@@ -98,18 +98,21 @@ models:
       tensor_parallel_size: 1     # cs4406 QoS allows 1 GPU per job (vLLM backend only)
       gguf_repo: Qwen/Qwen2.5-7B-Instruct-GGUF  # llamacpp backend (Apache-2.0)
       gguf_pattern: "qwen2.5-7b-instruct-q8_0-*.gguf"   # 3 split files, 8.1 GB; llama.cpp loads part 1
+      vllm_model: Qwen/Qwen2.5-7B-Instruct-AWQ  # vllm backend: fp16 7B (~15 GB) does not fit an 11 GB 2080 Ti;
+                                                # official 4-bit AWQ (~5.5 GB), same tokenizer as hf_id
     qwen1p5b:
       hf_id: Qwen/Qwen2.5-1.5B-Instruct
       params_b: 1.5               # VERIFY from model card
       tensor_parallel_size: 1
       gguf_repo: Qwen/Qwen2.5-1.5B-Instruct-GGUF
       gguf_pattern: "qwen2.5-1.5b-instruct-q8_0.gguf"   # 1.9 GB
+      vllm_model: Qwen/Qwen2.5-1.5B-Instruct    # vllm backend: fp16, ~3 GB
 
 generation:
-  # Serving engine. vllm needs compute capability >= 7.5 (RTX 2080 Ti+). Ada's cs4406 jobs so far land on
-  # GTX 1080 Ti (sm_61), so the default is llamacpp: llama.cpp's OpenAI-compatible server + AutoRAG's
-  # openai_llm module. Switch to vllm if the TA confirms 2080 Ti-class nodes.
-  backend: llamacpp              # llamacpp | vllm
+  # Serving engine. vllm needs compute capability >= 7.5 (RTX 2080 Ti+). The pilot ran llamacpp on a GTX 1080 Ti
+  # (sm_61): llama.cpp's OpenAI-compatible server + AutoRAG's openai_llm module. The TA confirmed 2080 Ti nodes
+  # (gnode042 onwards, u22), so jobs on those nodes set RAGROUTE_BACKEND=vllm (env ragroute-vllm).
+  backend: ${RAGROUTE_BACKEND:-llamacpp}   # llamacpp | vllm
   llamacpp:
     server_bin: ${LLAMA_SERVER_BIN:-llama-server}   # built by slurm/ada/build_llamacpp.sh
     lib_path: ${LLAMA_LIB_PATH:-}    # CUDA runtime libs for llama-server only (set by slurm/ada/env.sh)
@@ -124,7 +127,12 @@ generation:
   max_tokens: 32                 # short answers; verification needs ~3 tokens
   max_model_len: 4096
   dtype: half                    # fp16: Turing GPUs (RTX 2080 Ti) have no bf16. Use bfloat16 on Ampere+.
-  gpu_memory_utilization: 0.88
+  # vLLM on an 11 GB RTX 2080 Ti (Ada jobs 45042, 45057). Defaults ran out of memory twice: (1) the sampler warm-up
+  # for 256 sequences; (2) the 7B AWQ model mid-prefill (536 MB MLP buffer at 8,192 batched tokens, with 0.88 of the
+  # GPU given to vLLM). Lower values leave ~1 GB spare; the KV cache still holds ~34k tokens (~20 k=10 prompts).
+  gpu_memory_utilization: 0.78
+  max_num_seqs: 64
+  max_num_batched_tokens: 4096
   seed: 0
 
 prompts:

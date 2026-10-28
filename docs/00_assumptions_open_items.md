@@ -8,7 +8,7 @@ checked against the real source (docs, model card, cluster admin) before we rely
 | # | Assumption | If false |
 |---|---|---|
 | A1 | ✔ Team of 3. **Mid-submission Fri 2026-10-31; final deadline Fri 2026-11-21** (confirmed by the team). Mid-submission format not yet known. | Plan in docs/07 already cuts scope (3 datasets, FEVER optional, latency optional). |
-| A2 | **Checked on Ada 2026-10-27 (account `cs4406`, QoS `cs4406`, partition `u22`):** max **1 GPU, 10 CPUs, 1 running job and 1 submitted job per user, 6 h wall time**. Node gnode002 has **GTX 1080 Ti (11 GB, compute capability 6.1)**, which vLLM does not support (floor 7.5). GPU types of other nodes are not recorded in SLURM; still unknown whether any `u22` node has 2080 Ti or newer. | If no vLLM-capable GPU is reachable: see the GPU decision in docs/04 (ask for a GPU allocation, or change the serving engine).
+| A2 | **Checked on Ada 2026-10-27 (account `cs4406`, QoS `cs4406`, partition `u22`):** max **1 GPU, 10 CPUs, 1 running job and 1 submitted job per user, 6 h wall time**. Node gnode002 has **GTX 1080 Ti (11 GB, compute capability 6.1)**, which vLLM does not support (floor 7.5). GPU types of other nodes are not recorded in SLURM. **TA, 2026-10-28: gnode042 onwards (the `u22` nodes after gnode041, up to about gnode090) have RTX 2080 Ti**; select them with `-w`/`--nodelist` or, as our jobs do, `--exclude` of the u22 nodes below gnode042. | If no vLLM-capable GPU is reachable: see the GPU decision in docs/04 (ask for a GPU allocation, or change the serving engine).
 | A3 | ✔ Compute nodes **do** have internet (Hugging Face and PyPI reachable from gnode002). Storage: home quota 25 GB (`/home2/cs4406.11`), no personal `/share1` folder; node-local `/ssd_scratch` (~438 GB free) and `/scratch` (~540 GB free) exist but are per node. | Stage large data (corpus, indexes, models) into node-local scratch inside each job, or ask admins for a `/share1` folder. |
 | A4 | AutoRAG **0.3.27** (latest on PyPI at writing) is the harness. Its behaviour below was checked by reading its source, not by running it. **VERIFY by the week-1 equivalence check.** | If a later version changes node semantics, pin 0.3.27. |
 | A5 | Open-weight generators from one family: **Qwen2.5-7B-Instruct** and **Qwen2.5-1.5B-Instruct** (same tokenizer, so token counts are comparable). **VERIFY licences and parameter counts on the model cards.** | Llama-3.1-8B / 3.2-3B are drop-in alternatives (gated licences, different tokenizers). |
@@ -29,7 +29,7 @@ Consequence: vLLM is a hard requirement, so the generators must run on GPUs vLLM
 ## C. Open items (also tracked in docs/09_requirements_checklist.md)
 
 1. ✔ "Bllm" = vLLM (section B).
-2. Ada: ✔ account/partition/QoS limits, scratch, internet (A2, A3). **Open: which `u22` nodes (if any) have vLLM-capable GPUs (≥ 2080 Ti).** Ask the TA/admins, or probe nodes.
+2. Ada: ✔ account/partition/QoS limits, scratch, internet (A2, A3). ✔ vLLM-capable GPUs: RTX 2080 Ti on gnode042 onwards (TA, 2026-10-28). The pilot ran llama.cpp on a 1080 Ti; the full run uses vLLM (env `ragroute-vllm`, smoke test `slurm/ada/jobV_vllm_smoke_gpu.sbatch`).
 3. ✔ Deadlines known (A1). Open: mid-submission and final report format (pages, template, demo?).
 4. Judge model: must not be Qwen; pick after the 150-item validation (candidates: a ~7–9B instruct model from another family; a stronger model if API credit exists).
 5. Whether FEVER is included: decided after the week-2 budget check (design doc §3).

@@ -61,8 +61,10 @@ def main():
     hybrid = HybridRRF(project)
     reranker = SentenceTransformerReranker(project, model_name=cfg["models"]["reranker"])
     prompter = ChatFstring(project)
-    llm = Vllm(project, llm=g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
-               max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"])
+    llm = Vllm(project, llm=g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"],
+               dtype=gen["dtype"], max_model_len=gen["max_model_len"],
+               gpu_memory_utilization=gen["gpu_memory_utilization"], max_num_seqs=gen["max_num_seqs"],
+               max_num_batched_tokens=gen["max_num_batched_tokens"])
     configs = [c for c in all_configs(cfg) if c.generator == args.generator]
 
     def one(row: pd.DataFrame, c) -> dict:

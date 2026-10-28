@@ -101,11 +101,13 @@ def generator_node(cfg: dict, gen_key: str) -> dict:
                 }]}
     return {"node_type": "generator", "strategy": {"metrics": GEN_METRICS},
             "modules": [{
-                "module_type": "vllm", "llm": g["hf_id"],
+                "module_type": "vllm", "llm": g.get("vllm_model", g["hf_id"]),
                 "temperature": gen["temperature"], "max_tokens": gen["max_tokens"],
                 "tensor_parallel_size": g["tensor_parallel_size"], "dtype": gen["dtype"],
                 "max_model_len": gen["max_model_len"],
-                "gpu_memory_utilization": gen["gpu_memory_utilization"], "seed": gen["seed"],
+                "gpu_memory_utilization": gen["gpu_memory_utilization"], "max_num_seqs": gen["max_num_seqs"],
+                "max_num_batched_tokens": gen["max_num_batched_tokens"],
+                "seed": gen["seed"],
             }]}
 
 

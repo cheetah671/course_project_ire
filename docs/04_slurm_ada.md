@@ -14,7 +14,7 @@ policy, and whether compute nodes reach the internet.
 | Login | `ada-gw2.iiit.ac.in` (password OK; at times refuses with "Not allowed at this time"). `ada.iiit.ac.in` accepts only Kerberos. | Use the gateway. |
 | Account / QoS / partition | `cs4406` / `cs4406` / `u22` only | `#SBATCH -A cs4406 -p u22` |
 | QoS limits | **1 GPU, 10 CPUs per user; 1 running + 1 submitted job; 6 h wall time** | No job arrays, no `--dependency` chains, no TP=2. Every stage must resume from its cache within 6 h. |
-| GPU seen | gnode002: **GTX 1080 Ti, 11 GB, sm_61**. SLURM records no GPU types. | vLLM **and** the installed PyTorch (2.11+cu128, archs sm_75..sm_120) cannot use it. **Open: which nodes have ≥ RTX 2080 Ti** (asked TA/admins). |
+| GPU seen | gnode002: **GTX 1080 Ti, 11 GB, sm_61**. SLURM records no GPU types. | vLLM **and** the installed PyTorch (2.11+cu128, archs sm_75..sm_120) cannot use it. ✔ **RTX 2080 Ti on gnode042 onwards** (TA, 2026-10-28). vLLM jobs use `--exclude` of the u22 nodes below gnode042 so any free 2080 Ti node can take them, and `require_vllm_gpu` (env.sh) stops a job that lands on an older GPU. |
 | 7B generator on 1 GPU | fp16 needs ~15 GB | On an 11 GB 2080 Ti: use `Qwen/Qwen2.5-7B-Instruct-AWQ` (4-bit, ~5.5 GB) or Qwen2.5-3B; on ≥ 24 GB: fp16/bf16 as planned. Decide once the GPU type is known. |
 | Storage | home 25 GB (`/home2/cs4406.11`); no personal `/share1` dir; node-local `/ssd_scratch` (~438 GB free) and `/scratch` (~540 GB free) | Envs and code in home; corpus, indexes and HF model cache in node-local scratch, staged inside each job (re-download if the job lands on another node). |
 | Internet on compute nodes | yes (Hugging Face, PyPI) | No offline prefetch needed. |

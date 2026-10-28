@@ -188,7 +188,8 @@ def stage_generate(cfg, gen_key: str, force=False, limit: int | None = None, onl
     if limit:
         qa = qa.head(limit)
     g = cfg["models"]["generators"][gen_key]
-    configs = [c for c in all_configs(cfg) if c.generator == gen_key and (only is None or c.config_id == only)]
+    wanted = set(only.split(",")) if only else None
+    configs = [c for c in all_configs(cfg) if c.generator == gen_key and (wanted is None or c.config_id in wanted)]
     todo = [c for c in configs if force or not (cache / subdir / f"{c.config_id}.parquet").exists()]
     if not todo:
         print(f"all {len(configs)} configs for {gen_key} cached; skipping")
@@ -207,8 +208,10 @@ def open_generator(cfg, gen_key: str, project: Path, cache: Path):
     if gen["backend"] == "vllm":
         from autorag.nodes.generator import Vllm
 
-        llm = Vllm(str(project), llm=g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
-                   max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"])
+        llm = Vllm(str(project), llm=g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+                   max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"],
+                   max_num_seqs=gen["max_num_seqs"],
+                   max_num_batched_tokens=gen["max_num_batched_tokens"])
         _log_timing(cache, {"stage": f"load_{gen_key}", "backend": "vllm", "seconds": time.time() - t_load})
         yield llm
     elif gen["backend"] == "llamacpp":
@@ -253,7 +256,8 @@ def _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache: Path, subdir: str
             "retrieved_ids": df["retrieved_ids"].values,
         })
         out.to_parquet(cache / subdir / f"{c.config_id}.parquet", index=False)
-        _log_timing(cache, {"stage": f"generate_{c.config_id}", "seconds": secs, "n": len(out),
+        _log_timing(cache, {"stage": f"generate_{c.config_id}", "subdir": subdir, "backend": gen["backend"],
+                            "seconds": secs, "n": len(out),
                             "input_tokens": int(out["input_tokens"].sum()), "output_tokens": int(out["output_tokens"].sum())})
         print(f"{c.config_id}: {len(out)} gens in {secs:.1f}s; in_tok={out['input_tokens'].sum()} out_tok={out['output_tokens'].sum()}")
 
@@ -280,8 +284,10 @@ def check_prompt_token_count(cfg, gen_key: str, n: int = 20):
     if gen["backend"] == "vllm":
         from vllm import LLM, SamplingParams
 
-        llm = LLM(g["hf_id"], tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
-                  max_model_len=gen["max_model_len"])
+        llm = LLM(g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+                  max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"],
+                  max_num_seqs=gen["max_num_seqs"],
+                  max_num_batched_tokens=gen["max_num_batched_tokens"])
         outs = llm.chat(msgs, SamplingParams(max_tokens=1, temperature=0))
         theirs = [len(o.prompt_token_ids) for o in outs]
     else:
@@ -311,7 +317,7 @@ def main():
     ap.add_argument("--generator", default=None)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--limit", type=int, default=None, help="smoke test: first N queries only")
-    ap.add_argument("--only", default=None, help="run a single config_id")
+    ap.add_argument("--only", default=None, help="comma-separated config_ids to run (default: all)")
     ap.add_argument("--subdir", default="generation", help="cache sub-folder for outputs")
     args = ap.parse_args()
     cfg = load_experiment(args.config)

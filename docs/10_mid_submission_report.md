@@ -3,9 +3,7 @@
 **Which RAG Configuration for Which Query? Cost-Aware Per-Query Configuration Routing**
 Team: [[names / roll numbers]] · Course: IRE · Final deadline: Fri 21 Nov 2026
 
-> Convention: `[[...]]` = a number or name not filled yet (from the pilot run, job B, or the team).
-> Never replace one with a guess. Everything else in this file was measured or checked.
-> Target length: 4–6 pages once exported. Detailed decision records: docs/02_experiment_design.md.
+Detailed decision records: docs/02_experiment_design.md.
 
 ---
 
@@ -132,7 +130,8 @@ Top-3 and top-10 are prefixes of top-20.
   **Generation is not bit-exact.** Retrieval and prompts are identical. llama.cpp serves 6 requests
   in parallel, and the GPU's floating-point results depend on which requests share a batch, so
   greedy decoding changes about 3% of answers between runs. All the answer differences above come
-  from this; vLLM batching behaves the same way. It is a measured noise floor: it inflates the
+  from this. (In a first vLLM test on an RTX 2080 Ti, reruns were 100% identical: 4 configs × 300
+  questions.) It is a measured noise floor for the pilot: it inflates the
   oracle, which takes a max over 24 slightly noisy outcomes, and it is one more reason we judge
   routing only out of sample.
 
@@ -155,11 +154,13 @@ Other details from the AutoRAG source:
 
 ### 3.6 Compute (Ada, IIIT-H)
 - **Course quota:** 1 GPU, 10 CPUs, 1 running job, 6 h per job, 29 GB RAM.
-- **GPU:** the nodes we can use have GTX 1080 Ti GPUs (compute capability 6.1). vLLM needs ≥ 7.5, so
+- **Pilot GPU:** the pilot ran on a GTX 1080 Ti (compute capability 6.1). vLLM needs ≥ 7.5, so pilot
   generation runs on **llama.cpp** (`llama-server`, Qwen2.5 GGUF Q8_0) behind AutoRAG's OpenAI-compatible
   LLM module. llama.cpp runs locally, and no external API is called.
-- **If RTX 2080 Ti nodes become available** (asked the TA), we switch to vLLM. This is a one-line backend
-  change in configs/experiment.yaml.
+- **Full run:** the TA confirmed RTX 2080 Ti nodes (gnode042 onwards), and we are setting up vLLM there.
+  Switching engines is one setting in configs/experiment.yaml. A 2080 Ti has 11 GB, so under vLLM the 7B
+  model uses 4-bit AWQ weights (the pilot used 8-bit Q8_0). Before the full run we compare vLLM's answers
+  with the pilot's llama.cpp answers on the same questions.
 - **Decoding:** greedy decoding in both backends.
   - Output token counts come from the server's `usage` field.
   - Input token counts come from the generator's tokenizer and chat template.
@@ -168,8 +169,8 @@ Other details from the AutoRAG source:
 | Item | Status |
 |---|---|
 | Proposal, experiment design with decision records (D1–D24), risk register, plan | done (docs/01–09) |
-| Core citations verified | done (8/8); dataset and tool citations pending |
-| Code: data prep, mining, corpus, splits, AutoRAG YAMLs, staged runner, features, oracle, cost, routers, bootstrap, tables, plots | done; 20 unit tests pass |
+| Citations verified | done (8 core + 17 dataset, model and tool references) |
+| Code: data prep, mining, corpus, splits, AutoRAG YAMLs, staged runner, features, oracle, cost, routers, bootstrap, tables, plots | done; 26 unit tests pass |
 | Local AutoRAG validation (prefix check, reranker ID sets, features, token counts) | done |
 | Bugs found and fixed by tests and runs | 10. Examples: AutoRAG node files use unsuffixed columns; the transformers-5 chat template returns a dict; AutoRAG breaks on pandas 3; the validator crashes on rerun |
 | Ada environments (AutoRAG + torch for sm_61; Pyserini + JDK 21; llama.cpp built for sm_61/75) | done |
@@ -294,9 +295,11 @@ Cut order if behind: latency study → MLP router → RAGAS at scale → TriviaQ
 per dataset. Details: docs/07.
 
 ## 7. Risks and changes from the proposal
-- **GPU type.** Only GTX 1080 Ti is confirmed, so we use llama.cpp instead of vLLM. Generation is slower
-  and the 7B model uses Q8_0 weights rather than bf16. We will report this as a fixed setting. The
-  routing question does not depend on the serving engine.
+- **Serving engine and weights.** The pilot used llama.cpp on a GTX 1080 Ti, with the 7B model in 8-bit
+  Q8_0. The full run moves to vLLM on RTX 2080 Ti nodes, where the 7B model needs 4-bit AWQ weights to fit
+  in 11 GB, and lower precision can shift answer quality. We check vLLM against the pilot outputs first; if
+  they differ much, we keep llama.cpp on the 2080 Ti. Either way, the engine and weights are one fixed
+  setting for all 24 configs, so the routing comparison does not depend on them.
 - **Headroom may not be predictable.** The pilot ceiling is large (+0.20 F1), but no pilot router
   beats best static on quality. The full run gives about 5× more training questions. If routers still
   do not help, the "version S" abstract covers that outcome (docs/01). Dropped: an oracle-level
@@ -306,8 +309,8 @@ per dataset. Details: docs/07.
 - **NQ gold coverage** in the pilot sub-corpus is 0.79, because the has_answer heuristic only looks at
   mined passages. This affects retrieval recall only, not answer EM/F1.
 - **Generation noise.** About 3% of answers change when a config is re-run (parallel-batch nondeterminism,
-  §3.4). Running one request at a time would remove it but [[estimate, not measured]] roughly double or triple generation time for the
-  full run. Decision: keep parallel serving, report the measured flip rate, and re-measure it for the 7B model.
+  §3.4). Running one request at a time would remove it, but we expect (not measured) it to roughly double or
+  triple generation time for the full run. Decision: keep parallel serving, report the measured flip rate, and re-measure it for the 7B model.
 - **Ada limits.** One 6 h job at a time. Every stage caches per unit and resumes after a timeout.
 
 ## References

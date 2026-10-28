@@ -16,6 +16,7 @@ export AUTORAG_YAML_DIR=$DATA_ROOT/autorag_yaml   # YAMLs embed the Chroma path,
 
 # Node-local SSD (fast, large, NOT shared between nodes): big downloads that can be re-fetched
 export NODE_SCRATCH=/ssd_scratch/$USER/ragroute
+mkdir -p "$NODE_SCRATCH" 2>/dev/null || export NODE_SCRATCH=/tmp/$USER/ragroute   # node without /ssd_scratch
 export HF_HOME=$NODE_SCRATCH/hf_cache
 export PYSERINI_CACHE=$NODE_SCRATCH/pyserini
 export DPR_TSV=$NODE_SCRATCH/raw/psgs_w100.tsv.gz
@@ -34,18 +35,25 @@ export LLAMA_LIB_PATH=$MAMBA_ROOT_PREFIX/envs/llamacpp_build/lib
 export TOKENIZERS_PARALLELISM=false PYTHONHASHSEED=0
 mkdir -p "$DATA_ROOT" "$RESULTS_ROOT" "$RUN/logs" "$NODE_SCRATCH/raw" "$HF_HOME" "$PYSERINI_CACHE" 2>/dev/null || true
 
-py ()     { "$MM" run -n ragroute python "$@"; }
+# RAGROUTE_ENV=ragroute-vllm selects the vLLM env (2080 Ti nodes); default is the pilot's llama.cpp-era env
+py ()     { "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python "$@"; }
 # Pyserini 1.6 builds an OpenAI client at import time and fails without a key; a dummy key is never used.
 pymine () { OPENAI_API_KEY=${OPENAI_API_KEY:-not-used} "$MM" run -n ragroute-mining python "$@"; }
 step ()   { echo; echo "== $(date -Is) $*"; }
+
+require_vllm_gpu () {  # vLLM needs compute capability >= 7.5; stop early if SLURM placed us on a GTX 1080 Ti
+  local cap; cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+  echo "GPU: $(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader | head -1), cc $cap"
+  awk -v c="$cap" 'BEGIN { exit !(c >= 7.5) }' || { echo "compute capability $cap < 7.5: vLLM cannot run here"; exit 3; }
+}
 
 log_env () {  # reproducibility record per job; never allowed to fail the job
   local tag="$1" f="$RESULTS_ROOT/env_${1}_${SLURM_JOB_ID:-login}.txt"
   {
     echo "job=${SLURM_JOB_ID:-none} host=$(hostname) date=$(date -Is) pilot=${RAGROUTE_PILOT:-0}"
     nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv 2>/dev/null || echo "no GPU"
-    "$MM" run -n ragroute python -c "import importlib.metadata as m, torch; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), 'cuda_ok', torch.cuda.is_available(), '| autorag', m.version('autorag'), '| pandas', m.version('pandas'))" 2>&1 | tail -1
+    "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python -c "import importlib.metadata as m, torch; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), 'cuda_ok', torch.cuda.is_available(), '| autorag', m.version('autorag'), '| pandas', m.version('pandas'))" 2>&1 | tail -1
   } > "$f" 2>&1 || true
-  "$MM" run -n ragroute python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null || true
+  "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null || true
   echo "env logged to $f"
 }
