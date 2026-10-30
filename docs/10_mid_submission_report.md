@@ -1,7 +1,14 @@
 # Mid-submission report (Fri 31 Oct 2026)
 
 **Which RAG Configuration for Which Query? Cost-Aware Per-Query Configuration Routing**
-Team: [[names / roll numbers]] · Course: IRE · Final deadline: Fri 21 Nov 2026
+
+**Team: Agents** · Course: IRE · Final deadline: Fri 21 Nov 2026
+
+| Name | Roll number |
+|---|---|
+| Samyak Jain | 2024101062 |
+| Arnav Agnihotri | 2024101103 |
+| Sherley Sonali Peethala | 2023111022 |
 
 Detailed decision records: docs/02_experiment_design.md.
 
