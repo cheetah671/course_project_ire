@@ -7,7 +7,7 @@ checked against the real source (docs, model card, cluster admin) before we rely
 
 | # | Assumption | If false |
 |---|---|---|
-| A1 | ✔ Team of 3. **Mid-submission Fri 2026-10-31; final deadline Fri 2026-11-21** (confirmed by the team). Mid-submission format not yet known. | Plan in docs/07 already cuts scope (3 datasets, FEVER optional, latency optional). |
+| A1 | ✔ Team of 3. **Mid-submission Fri 2026-10-31; final deadline Fri 2026-11-21** (confirmed by the team). Mid-submission format not yet known. | Plan in docs/07 already cuts scope (latency optional). The 3 tasks (QA, FEVER, zsRE) are never cut. |
 | A2 | **Checked on Ada 2026-10-27 (account `cs4406`, QoS `cs4406`, partition `u22`):** max **1 GPU, 10 CPUs, 1 running job and 1 submitted job per user, 6 h wall time**. Node gnode002 has **GTX 1080 Ti (11 GB, compute capability 6.1)**, which vLLM does not support (floor 7.5). GPU types of other nodes are not recorded in SLURM. **TA, 2026-10-28: gnode042 onwards (the `u22` nodes after gnode041, up to about gnode090) have RTX 2080 Ti**; select them with `-w`/`--nodelist` or, as our jobs do, `--exclude` of the u22 nodes below gnode042. | If no vLLM-capable GPU is reachable: see the GPU decision in docs/04 (ask for a GPU allocation, or change the serving engine).
 | A3 | ✔ Compute nodes **do** have internet (Hugging Face and PyPI reachable from gnode002). Storage: home quota 25 GB (`/home2/cs4406.11`), no personal `/share1` folder; node-local `/ssd_scratch` (~438 GB free) and `/scratch` (~540 GB free) exist but are per node. | Stage large data (corpus, indexes, models) into node-local scratch inside each job, or ask admins for a `/share1` folder. |
 | A4 | AutoRAG **0.3.27** (latest on PyPI at writing) is the harness. Its behaviour below was checked by reading its source, not by running it. **VERIFY by the week-1 equivalence check.** | If a later version changes node semantics, pin 0.3.27. |
@@ -32,7 +32,12 @@ Consequence: vLLM is a hard requirement, so the generators must run on GPUs vLLM
 2. Ada: ✔ account/partition/QoS limits, scratch, internet (A2, A3). ✔ vLLM-capable GPUs: RTX 2080 Ti on gnode042 onwards (TA, 2026-10-28). The pilot ran llama.cpp on a 1080 Ti; the full run uses vLLM (env `ragroute-vllm`, smoke test `slurm/ada/jobV_vllm_smoke_gpu.sbatch`).
 3. ✔ Deadlines known (A1). Open: mid-submission and final report format (pages, template, demo?).
 4. Judge model: must not be Qwen; pick after the 150-item validation (candidates: a ~7–9B instruct model from another family; a stronger model if API credit exists).
-5. Whether FEVER is included: decided after the week-2 budget check (design doc §3).
+5. ✔ Tasks (30 Oct): the professor asked for at least 2 (possibly 3) tasks, so FEVER (verification) and zsRE
+   (slot filling) are core, alongside open-domain QA (NQ, HotpotQA, TriviaQA). Routers are trained globally
+   and per task. Open: confirm with the professor that 3 tasks (rather than 2) is what was meant; dropping
+   zsRE is one flag in `configs/experiment.yaml`.
+10. Cost weights are placeholders until job K measures them on the full run's engine and GPU
+   (`slurm/ada/jobK_calibrate_gpu.sbatch` → `configs/cost_weights_measured.yaml`). Must run before the full run.
 6. Pull the reference lists of Wang et al. 2024, AutoRAG, AutoRAG-HP and arXiv:2505.03452, and check who cites them (Semantic Scholar / Google Scholar "cited by"). Add chunking-vs-cost studies found there. **No citation is added without reading the paper.**
 7. Confirm the vLLM version that runs fp16 on Ada's GPUs. ✔ Official floor is compute capability 7.5 (2080 Ti OK, 1080 Ti not); community reports show some SM75 kernel limits, so smoke-test Qwen2.5 in week 1.
 8. ✔ Pyserini index `wikipedia-dpr-100w` exists (21,015,324 docs). Still confirm on first use that hit.docid equals the DPR passage id.

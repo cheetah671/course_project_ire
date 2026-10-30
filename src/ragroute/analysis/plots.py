@@ -91,7 +91,7 @@ def pareto_panel(ax, curves: pd.DataFrame, group: str, router_a: str, router_b: 
     if labels:
         _direct_labels(ax, ends)
     ax.set_xlabel("Mean marginal cost per query (cost units)")
-    ax.set_ylabel("Mean quality (F1 / accuracy)")
+    ax.set_ylabel("Mean quality (F1 / accuracy / EM)")
     ax.set_title(group if group != "ALL" else "All datasets (test)", color=INK, fontsize=10, loc="left")
 
 
@@ -100,15 +100,19 @@ def fig_pareto(curves, out: Path, router_a: str, router_b: str):
     pareto_panel(ax, curves, "ALL", router_a, router_b)
     ax.legend(frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.12, 1.0))
     _save(fig, out / "F2_pareto_test")
-    groups = sorted(g for g in curves["group"].unique() if g.startswith("dataset="))
-    if groups:
-        fig, axes = plt.subplots(1, len(groups), figsize=(3.4 * len(groups) + 2.2, 3.4), squeeze=False, sharey=True)
+    for prefix, stem in (("dataset=", "F3_pareto_by_dataset"), ("task=", "F3b_pareto_by_task")):
+        groups = sorted(g for g in curves["group"].unique() if g.startswith(prefix))
+        if len(groups) < (1 if prefix == "dataset=" else 2):
+            continue
+        # global routers only: a per-task router's own curve also carries group "task=<t>"
+        glob = curves[curves["scope"] == "global"] if "scope" in curves else curves
+        fig, axes = plt.subplots(1, len(groups), figsize=(3.4 * len(groups) + 2.2, 3.4), squeeze=False)
         for i, (ax, g) in enumerate(zip(axes[0], groups)):
-            pareto_panel(ax, curves, g, router_a, router_b, labels=False)
+            pareto_panel(ax, glob, g, router_a, router_b, labels=False)
             if i:
                 ax.set_ylabel("")
         axes[0][-1].legend(frameon=False, fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1.0))
-        _save(fig, out / "F3_pareto_by_dataset")
+        _save(fig, out / stem)
 
 
 def fig_oracle_winrate(runs: pd.DataFrame, out: Path):
@@ -132,6 +136,8 @@ def fig_oracle_winrate(runs: pd.DataFrame, out: Path):
 
 def fig_ablation(headline: pd.DataFrame, out: Path):
     h = headline[headline["mode"] == "iso_cost"].copy()
+    if "eval_on" in h:  # global routers on all test queries only
+        h = h[(h["eval_on"] == "ALL") & (h["scope"] == "global")]
     h[["fs", "model"]] = h["policy"].str.replace("router_", "", regex=False).str.rsplit("_", n=1, expand=True)
     piv = h.pivot(index="fs", columns="model", values="gap_closed")
     fig, ax = plt.subplots(figsize=(6.4, 3.2))
@@ -148,7 +154,7 @@ def fig_ablation(headline: pd.DataFrame, out: Path):
 def fig_importance(imp: dict, out: Path):
     if not imp:
         return
-    df = pd.DataFrame(imp).T.fillna(0)
+    df = pd.DataFrame({k: v for k, v in imp.items() if "@" not in k}).T.fillna(0)  # global routers only
     df = df.div(df.sum(axis=1), axis=0)
     fig, ax = plt.subplots(figsize=(6.4, 0.6 + 0.35 * len(df)))
     left = np.zeros(len(df))

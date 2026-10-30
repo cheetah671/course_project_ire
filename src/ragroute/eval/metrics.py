@@ -1,4 +1,5 @@
-"""Primary quality metrics (pre-committed): EM and token-F1 on short gold answers; accuracy for verification.
+"""Primary quality metrics (pre-committed), one natural metric per TASK:
+  qa (NQ, HotpotQA, TriviaQA) -> token F1; verification (FEVER) -> accuracy; slot_filling (zsRE) -> exact match.
 
 Normalisation follows the SQuAD v1.1 evaluation script (lowercase, strip punctuation, drop articles
 a/an/the, collapse whitespace). Scores are maxed over all gold aliases.
@@ -6,6 +7,8 @@ a/an/the, collapse whitespace). Scores are maxed over all gold aliases.
 Per-query quality used for oracle labels and routing is always in [0, 1]:
   qa           -> token F1 (router target) and EM (reported alongside)
   verification -> accuracy (1 if predicted label == gold label)
+  slot_filling -> exact match over all gold aliases (KILT's "accuracy" for zsRE); token F1 reported alongside.
+                  The object is an entity or date, so partial token overlap is not partial credit.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ from typing import Iterable
 
 _ARTICLES = re.compile(r"\b(a|an|the)\b", re.UNICODE)
 _PUNCT = set(string.punctuation)
-_PREFIXES = re.compile(r"^\s*(short answer|final answer|answer|verdict)\s*[:\-]\s*", re.IGNORECASE)
+_PREFIXES = re.compile(r"^\s*(short answer|final answer|answer|verdict|value)\s*[:\-]\s*", re.IGNORECASE)
 
 
 def normalize_answer(s: str) -> str:
@@ -98,6 +101,10 @@ def score_row(task: str, generated: str, golds: list[str]) -> dict:
         f1 = token_f1(pred, golds)
         return {"pred": pred, "em": em, "f1": f1, "acc": float("nan"),
                 "contains": answer_contains(pred, golds), "quality": f1}
+    if task == "slot_filling":
+        em = exact_match(pred, golds)
+        return {"pred": pred, "em": em, "f1": token_f1(pred, golds), "acc": em,
+                "contains": answer_contains(pred, golds), "quality": em}
     if task == "verification":
         verdict = parse_verdict(pred)
         acc = float(verdict == golds[0].upper())

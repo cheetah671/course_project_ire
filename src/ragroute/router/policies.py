@@ -25,10 +25,15 @@ class Grid:
     Q: np.ndarray        # (n, C) true quality
     C: np.ndarray        # (n, C) true cost
     config_ids: list
+    task: np.ndarray | None = None   # qa | verification | slot_filling (None: single-task data)
+
+    def __post_init__(self):
+        if self.task is None:
+            self.task = np.full(len(self.qids), "qa", dtype=object)
 
     def subset(self, mask):
         return Grid(self.qids[mask], self.dataset[mask], self.hops[mask], self.qtype[mask],
-                    self.Q[mask], self.C[mask], self.config_ids)
+                    self.Q[mask], self.C[mask], self.config_ids, self.task[mask])
 
 
 def realise(grid: Grid, pick: np.ndarray, overhead: np.ndarray | None = None):

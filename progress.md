@@ -33,7 +33,7 @@ final analysis.
   baselines, paired bootstrap, tables and plots.
 - **Checks:** a generation comparison tool (backend vs backend, run vs rerun) and an equivalence check
   against AutoRAG's own end-to-end pipeline.
-- **Tests:** 26 unit tests, all passing.
+- **Tests:** 26 unit tests at the pilot, all passing; 32 after the 30 Oct additions (see §2b).
 
 ### 1.3 Data and corpus
 - 1,000 questions sampled per dataset (NQ-open, HotpotQA, TriviaQA); pilot uses 100 per dataset.
@@ -109,6 +109,18 @@ The TA confirmed RTX 2080 Ti nodes (gnode042 onwards). This work is **not needed
 
 ---
 
+## 2b. Added on 30 Oct (team review: Sherley + professor's requirements)
+| Change | Why | Status |
+|---|---|---|
+| **FEVER (fact verification) and zsRE (slot filling) are core, not optional** | The professor asked for at least 2 (possibly 3) *tasks*; NQ, HotpotQA and TriviaQA are all one task (open-domain QA) | Code done: loaders, prompts, per-task metrics (accuracy for FEVER, EM for zsRE), gold mapping, features; zsRE loader checked on real rows. Enabled in `configs/experiment.yaml`; first run in the full grid. |
+| **Routers trained globally AND per task** (plus "per task, combined" over all test questions) | Asked for by the team; tests whether one router transfers across tasks | Code done in `router/train_eval.py`; headline table has one block per task; checked end to end on synthetic data |
+| **Macro-over-task and macro-over-dataset reporting; Holm correction applied** | Normalisation across metrics (professor); docs already promised Holm, but the code never called it | Done (headline table and T6 breakdowns) |
+| **Cost weights measured before the full run** | The weights were placeholder estimates; `calibrate_costs.py` was referenced but missing | Timing job `slurm/ada/jobK_calibrate_gpu.sbatch` + `ragroute.harness.calibrate` + `scripts/calibrate_costs.py` written; measured weights become the default automatically, with a warning while they are missing |
+| Budget | 5 datasets × 1,000 questions | ≈ 7.3 GPU-h on vLLM, ≈ 25.6 GPU-h on llama.cpp (extrapolated from pilot times; `scripts/budget.py`) |
+| Tests | — | 32 tests (30 run locally, 2 need `chromadb`) |
+
+---
+
 ## 3. Left for the mid-submission (by Fri 31 Oct)
 | Task | Who |
 |---|---|
@@ -121,25 +133,31 @@ The TA confirmed RTX 2080 Ti nodes (gnode042 onwards). This work is **not needed
 
 ## 4. Left after the mid-submission (1–21 Nov)
 
-### 4.1 First: choose the generation engine (about 1 day)
+### 4.1 First: choose the generation engine, then calibrate costs (about 1–2 days)
 - Rerun the 1.5B model in vLLM at full 32-bit precision to test whether fp16 causes the differences.
 - Count garbled 7B answers across all smoke-test outputs.
 - Decide: vLLM (about 3.5× faster, no rerun noise) or llama.cpp on the 2080 Ti (matches the pilot,
   slower, ~3% rerun noise).
 - Pin the chosen vLLM version in `requirements-cluster.txt` and record the decision in docs/02.
+- **Then, before any full-run generation:** `sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobK_calibrate_gpu.sbatch`
+  on the chosen engine (≤ 3 h). Commit the resulting `configs/cost_weights_measured.yaml`. Check that the
+  fit R² ≥ 0.95 for both generators (the script warns otherwise).
+- Sample FEVER and zsRE: re-run `prepare_qa` (the existing NQ/HotpotQA/TriviaQA samples do not change,
+  because each dataset has its own seed).
 
 ### 4.2 Full run and analysis
 | Dates | Work |
 |---|---|
-| 1–7 Nov | Build the ~1M-passage sub-corpus; retrieval and reranking for 3,000 questions; generation for all 24 configs (about 4 sequential 6 h GPU jobs); oracle table; retrieval features |
-| 8–14 Nov | Cost calibration and cost-weight sensitivity; 150-item human annotation to validate the LLM judge; Routers A and B with 5 seeds; choosing the cost-quality trade-off on dev; ablations |
-| 15–19 Nov | Breakdowns by dataset and question type (Holm-corrected); error analysis; where routing does not help; final figures |
+| 1–7 Nov | Build the ~1M-passage sub-corpus; retrieval and reranking for 5,000 questions (3 tasks); generation for all 24 configs (≈ 7 GPU-h on vLLM, 2 jobs; ≈ 26 GPU-h on llama.cpp, 5 jobs); oracle table; retrieval features |
+| 8–14 Nov | Cost-weight sensitivity; 150-item human annotation to validate the LLM judge; Routers A and B, global and per task, 5 seeds; choosing the cost-quality trade-off on dev; ablations |
+| 15–19 Nov | Breakdowns by task, dataset and question type (Holm-corrected); error analysis; where routing does not help; final figures |
 | 20–21 Nov | Review and submit the final report |
 
 **Also planned:** re-measure rerun noise for the 7B model on the chosen engine.
 
 **Cut order if behind:** latency study → MLP router → RAGAS at scale (keep the 150-item validation) →
-TriviaQA → 1,000 to 500 questions per dataset.
+TriviaQA (a third QA dataset, not a task) → 1,000 to 500 questions per dataset. **The three tasks (QA,
+FEVER, zsRE) are never cut.**
 
 ### 4.3 Risks to watch
 - **Headroom may not be predictable.** No pilot router beat the best static config on quality. The full

@@ -77,14 +77,17 @@ Router A at matched cost. H3 gains concentrate in multi-hop questions. H4 a larg
 value comes from dataset identity alone (tested by the per-dataset static baseline and the `D_only` ablation).
 
 ## 4. Method (summary; full detail and decision records in docs/02_experiment_design.md)
-4.1 Data: NQ-open and HotpotQA (+ TriviaQA, optionally FEVER), ~1,000 queries each, grouped
-train/dev/test split by query with leakage checks.
+4.1 Data: three tasks over one Wikipedia index: open-domain QA (NQ-open, HotpotQA, TriviaQA), fact
+verification (FEVER, KILT) and slot filling (zsRE, KILT); ~1,000 queries each, grouped train/dev/test split by
+query with leakage checks.
 4.2 Corpus and chunking: DPR 100-word Wikipedia passages (fixed chunking); ~1M-passage sub-corpus
 with full-corpus BM25 hard negatives.
 4.3 Grid: {BM25, dense bge-base, hybrid RRF k=60} × k∈{3,10} × reranker {off, MiniLM-L6 cross-encoder
 on a fixed pool of 20} × {Qwen2.5-7B, Qwen2.5-1.5B}, greedy decoding = 24 configs.
 4.4 Harness: AutoRAG modules, staged and cached (retrieve once, rerank once, generate per generator).
-4.5 Metrics: EM and token-F1 (primary, pre-committed); accuracy for FEVER; RAGAS on a validated subsample.
+4.5 Metrics: one per task, pre-committed: token-F1 (+EM) for QA, accuracy for FEVER, EM for zsRE; reported per
+task, per dataset, and pooled micro / macro-over-datasets / macro-over-tasks; RAGAS on a validated subsample.
+4.5b Routers are trained globally (all tasks pooled) and per task, and compared on the same test questions.
 4.6 Cost: countable marginal cost (tokens, calls, rerank pairs, index queries) with generator-specific
 token weights; offline cost reported separately with amortisation.
 4.7 Oracle table and routers: pooled quality model over (query, config) pairs; route by
@@ -147,7 +150,7 @@ Datasets, models, methods and tools. Checked on 2026-10-28 against the ACL Antho
 12. ✔ Mandar Joshi, Eunsol Choi, Daniel Weld, Luke Zettlemoyer. TriviaQA: A Large Scale Distantly Supervised Challenge
     Dataset for Reading Comprehension. ACL 2017, pp. 1601–1611. doi:10.18653/v1/P17-1147.
 13. ✔ James Thorne, Andreas Vlachos, Christos Christodoulopoulos, Arpit Mittal. FEVER: a Large-scale Dataset for Fact
-    Extraction and VERification. NAACL 2018, pp. 809–819. doi:10.18653/v1/N18-1074. (Only if FEVER is run.)
+    Extraction and VERification. NAACL 2018, pp. 809–819. doi:10.18653/v1/N18-1074.
 14. ✔ Fabio Petroni, Aleksandra Piktus, Angela Fan, Patrick Lewis, Majid Yazdani, Nicola De Cao, James Thorne,
     Yacine Jernite, Vladimir Karpukhin, Jean Maillard, Vassilis Plachouras, Tim Rocktäschel, Sebastian Riedel.
     KILT: a Benchmark for Knowledge Intensive Language Tasks. NAACL 2021, pp. 2523–2544.

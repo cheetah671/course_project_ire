@@ -20,7 +20,8 @@ from ragroute.cost import scalar_cost, structural_counts
 from ragroute.data.splits import grouped_split
 from ragroute.features.query_features import build_query_features
 
-DATASETS = {"nq": ("single", "qa"), "hotpotqa": ("multi", "qa"), "triviaqa": ("single", "qa")}
+DATASETS = {"nq": ("single", "qa"), "hotpotqa": ("multi", "qa"), "triviaqa": ("single", "qa"),
+            "fever": ("single", "verification"), "zsre": ("single", "slot_filling")}
 
 
 def make(out: Path, n_per_ds: int = 300, seed: int = 0) -> dict:
@@ -40,6 +41,8 @@ def make(out: Path, n_per_ds: int = 300, seed: int = 0) -> dict:
             words = int(6 + 10 * mh + rng.integers(0, 4))
             q = ("Which " if mh > 0.6 and rng.uniform() < 0.5 else "What ") + " ".join(["word"] * words) + f" item{ds}{i}?"
             qtype = ("comparison" if rng.uniform() < 0.3 else "bridge") if hops == "multi" else "single"
+            qtype = {"verification": "supports" if rng.uniform() < 0.5 else "refutes",
+                     "slot_filling": "slot"}.get(task, qtype)
             rows.append({"qid": f"{ds}:{i}", "dataset": ds, "task": task, "hops": hops, "qtype": qtype, "query": q,
                          "answers": ["x"], "gold_titles": [f"T{ds}{i // 3}"], "orig_id": str(i), "lat_mh": mh, "lat_lex": lex})
     meta = pd.DataFrame(rows)
@@ -53,19 +56,27 @@ def make(out: Path, n_per_ds: int = 300, seed: int = 0) -> dict:
     recs = []
     for r in meta.itertuples():
         for c in all_configs(cfg):
-            p = 0.25 + (0.15 if c.generator == "qwen7b" else 0) + (0.05 if c.rerank else 0)
-            p += 0.25 * r.lat_mh * (c.top_k == 10) - 0.10 * r.lat_mh * (c.top_k == 3)
-            p += {"bm25": 0.25 * r.lat_lex - 0.05, "dense": 0.20 * (1 - r.lat_lex), "hybrid": 0.12}[c.retriever]
+            if r.task == "verification":   # easier task: the small model and k=3 are nearly enough
+                p = 0.70 + (0.04 if c.generator == "qwen7b" else 0) + 0.05 * (c.top_k == 3) + 0.10 * r.lat_lex * (c.retriever != "dense")
+            elif r.task == "slot_filling":  # entity lookup: lexical match decides, the reranker helps
+                p = 0.20 + (0.10 if c.generator == "qwen7b" else 0) + (0.10 if c.rerank else 0)
+                p += {"bm25": 0.35 * r.lat_lex, "dense": 0.10, "hybrid": 0.20 * r.lat_lex + 0.05}[c.retriever]
+            else:
+                p = 0.25 + (0.15 if c.generator == "qwen7b" else 0) + (0.05 if c.rerank else 0)
+                p += 0.25 * r.lat_mh * (c.top_k == 10) - 0.10 * r.lat_mh * (c.top_k == 3)
+                p += {"bm25": 0.25 * r.lat_lex - 0.05, "dense": 0.20 * (1 - r.lat_lex), "hybrid": 0.12}[c.retriever]
             p = float(np.clip(p, 0.02, 0.98))
             em = float(rng.uniform() < p)
+            f1 = em if r.task == "verification" else max(em, float(rng.uniform() < 0.2) * 0.5)
             recs.append({"qid": r.qid, "config_id": c.config_id, "generator": c.generator, "retriever": c.retriever,
                          "top_k": c.top_k, "rerank": c.rerank, "dataset": r.dataset, "task": r.task, "hops": r.hops,
-                         "qtype": r.qtype, "em": em, "f1": max(em, float(rng.uniform() < 0.2) * 0.5), "acc": np.nan,
+                         "qtype": r.qtype, "em": em, "f1": f1, "acc": em if r.task != "qa" else np.nan,
                          "input_tokens": 80 + c.top_k * 135 + int(rng.integers(-20, 20)),
-                         "output_tokens": int(rng.integers(3, 12)), "generated_text": "x", "pred": "x",
+                         "output_tokens": int(rng.integers(1, 3) if r.task == "verification" else rng.integers(3, 12)),
+                         "generated_text": "x", "pred": "x",
                          **structural_counts(c.config_id, pool)})
     runs = pd.DataFrame(recs).merge(splits[["qid", "split"]], on="qid")
-    runs["quality"] = runs["f1"]
+    runs["quality"] = np.where(runs["task"] == "qa", runs["f1"], runs["em"])  # F1 (QA), accuracy (FEVER), EM (zsRE)
     runs["contains"] = runs["em"]
     runs["cost"] = scalar_cost(runs, w["weight_sets"][w["default"]])
     runs.to_parquet(results / "runs_scored.parquet", index=False)

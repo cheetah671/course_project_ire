@@ -18,8 +18,23 @@ def test_router_learns_synthetic_structure(tmp_path):
     assert oracle >= rb0 - 1e-9 and oracle > static0
     assert set(headline["mode"]) == {"iso_cost", "iso_quality", "lambda0"}
 
+    # global + per-task routers: synthetic data has 3 tasks (QA x3 datasets, FEVER, zsRE)
+    tasks = {"qa", "verification", "slot_filling"}
+    assert set(headline["eval_on"]) == {"ALL"} | {f"task={t}" for t in tasks}
+    allq = headline[headline["eval_on"] == "ALL"]
+    assert {"global", "per_task"} == set(allq["scope"])
+    assert "router_B_gbdt@per_task" in set(allq["policy"])
+    for t in tasks:  # each task block holds the global router and that task's own router
+        blk = headline[headline["eval_on"] == f"task={t}"]
+        assert {"router_B_gbdt", f"router_B_gbdt@{t}"} <= set(blk["policy"])
+        assert blk["n"].nunique() == 1 and blk["n"].iloc[0] < allq["n"].iloc[0]
+    assert headline["dQ_p_holm"].between(0, 1).all() and (headline["dQ_p_holm"] >= headline["dQ_p"] - 1e-12).all()
+    assert allq["dQ_macro_task"].notna().all()
+    assert "per_task_static" in set(curves["policy"])
+    assert {f"task={t}" for t in tasks} <= set(curves["group"])
+
     runs = pd.read_parquet(tmp_path / "synthetic_run" / "results" / "runs_scored.parquet")
-    assert len(tables.static_grid(runs)) == 24 * 3
+    assert len(tables.static_grid(runs)) == 24 * runs["dataset"].nunique()
     assert len(tables.weight_sensitivity(runs, load_cost_weights())) > 4
     assert not tables.best_by_qtype(runs).empty
     out = tmp_path / "figs"
@@ -27,4 +42,4 @@ def test_router_learns_synthetic_structure(tmp_path):
     plots.fig_pareto(curves, out, "router_A_gbdt", "router_B_gbdt")
     plots.fig_oracle_winrate(runs, out)
     plots.fig_ablation(headline, out)
-    assert (out / "F2_pareto_test.png").exists()
+    assert (out / "F2_pareto_test.png").exists() and (out / "F3b_pareto_by_task.png").exists()

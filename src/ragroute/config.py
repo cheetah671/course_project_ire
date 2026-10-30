@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,9 +52,23 @@ def load_experiment(path: str | Path | None = None) -> dict:
     return cfg
 
 
-def load_cost_weights(path: str | Path | None = None) -> dict:
+def load_cost_weights(path: str | Path | None = None, measured_path: str | Path | None = None) -> dict:
+    """Weight sets from configs/cost_weights.yaml, plus the "measured" set written by scripts/calibrate_costs.py
+    (configs/cost_weights_measured.yaml) when it exists. The default set is "measured"; until the calibration has
+    been run, it falls back to the placeholder set with a warning, so placeholder costs are never silent."""
     path = Path(path) if path else REPO_ROOT / "configs" / "cost_weights.yaml"
-    return load_yaml(path)
+    w = load_yaml(path)
+    measured = Path(measured_path) if measured_path else REPO_ROOT / "configs" / "cost_weights_measured.yaml"
+    if measured.exists():
+        m = load_yaml(measured)
+        w["weight_sets"]["measured"] = m["weights"]
+        w["measured_info"] = m.get("info", {})
+    if w["default"] not in w["weight_sets"]:
+        fallback = w.get("fallback_default", "measured_placeholder")
+        warnings.warn(f"cost weight set '{w['default']}' not available (run scripts/calibrate_costs.py); "
+                      f"using PLACEHOLDER weights '{fallback}'", stacklevel=2)
+        w["default"] = fallback
+    return w
 
 
 def enabled_datasets(cfg: dict) -> list[str]:

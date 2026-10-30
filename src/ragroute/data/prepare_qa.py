@@ -80,7 +80,27 @@ def load_fever(spec, jsonl_path: str | None = None):
                "qtype": label.lower(), "gold_titles": titles}
 
 
-LOADERS = {"nq": load_nq, "hotpotqa": load_hotpotqa, "triviaqa": load_triviaqa, "fever": load_fever}
+def zsre_query(kilt_input: str) -> str:
+    """KILT zsRE input 'subject [SEP] relation' -> 'subject | relation' (no special token in BM25/embedding text)."""
+    subj, sep, rel = kilt_input.partition("[SEP]")
+    return f"{subj.strip()} | {rel.strip()}" if sep else kilt_input.strip()
+
+
+def load_zsre(spec):
+    """KILT zsRE (slot filling): `input` = 'subject [SEP] relation'; every output[*].answer is a gold alias of the
+    object; provenance titles (the subject's page) are the gold titles. Verified on the HF validation split
+    2026-10-30 (e.g. 'USA-88 [SEP] time of spacecraft launch' -> '3 February 1993', provenance 'USA-88')."""
+    for ex in _load_hf(spec):
+        answers = list(dict.fromkeys(o["answer"] for o in ex["output"] if o.get("answer")))
+        if not answers:
+            continue
+        titles = sorted({p["title"] for o in ex["output"] for p in _as_list(o.get("provenance")) if p.get("title")})
+        yield {"orig_id": str(ex["id"]), "query": zsre_query(ex["input"]), "answers": answers,
+               "qtype": "slot", "gold_titles": titles}
+
+
+LOADERS = {"nq": load_nq, "hotpotqa": load_hotpotqa, "triviaqa": load_triviaqa, "fever": load_fever,
+           "zsre": load_zsre}
 
 
 def stratified_sample(df: pd.DataFrame, n: int, rng: np.random.Generator, by: str | None) -> pd.DataFrame:

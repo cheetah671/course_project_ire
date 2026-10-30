@@ -30,7 +30,9 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | Requirement | Where | Status |
 |---|---|---|
 | NQ-open + HotpotQA over a stated Wikipedia dump and passage format | docs/02 D1; `configs/experiment.yaml` | ✅ URL and passage count verified |
-| 1–2 extra datasets, 2-sentence justification each, same index, compute impact | docs/02 D4 (TriviaQA recommended, FEVER optional, MuSiQue/2Wiki considered) | ✅ |
+| 1–2 extra datasets, 2-sentence justification each, same index, compute impact | docs/02 D4 (TriviaQA; FEVER and zsRE as tasks 2 and 3; MuSiQue/2Wiki considered) | ✅ |
+| ≥ 2 (possibly 3) tasks (professor); router global and per task (team) | docs/02 D4, D20b; `configs/experiment.yaml`; `router/train_eval.py` | ✅ code; ⏳ full run |
+| Cost weights measured before the full run (team) | docs/02 D17; `harness/calibrate.py`, `scripts/calibrate_costs.py`, `slurm/ada/jobK_calibrate_gpu.sbatch` | ✅ code; ⏳ job K on Ada |
 | Fixed chunking, why, limitation | docs/02 D3 | ✅ |
 | ~1,000 queries/dataset; sampling procedure, seed, split by query | docs/02 D5; `data/prepare_qa.py`, `data/splits.py` | ✅ run on the real datasets: 4 × 1,000 sampled, deterministic, 600/200/200 per dataset |
 | Leakage check through shared supporting docs | `data/splits.py` (grouped split, fail-fast guards), `leakage_report.json`; tests | ✅ on real data: 293 shared articles found, 0 shared between train and test after grouping |
@@ -76,7 +78,7 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | Proposal/report skeleton | docs/01 |
-| 2 | Repo + runnable code | docs/03; `src/ragroute/`; `tests/` (19 passing locally) |
+| 2 | Repo + runnable code | docs/03; `src/ragroute/`; `tests/` (32 tests; 30 run locally, 2 need `chromadb`) |
 | 3 | SLURM scripts | `slurm/`; docs/04 |
 | 4 | 150-item annotation guide + template | docs/05; `annotation/` |
 | 5 | Tables, figures, report template | docs/06 |
@@ -86,13 +88,14 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | — | "Bllm" interpretations | docs/00 §B |
 
 ## Open items
-1. Meaning of "Bllm" (docs/00 §B); base design proceeds without it.
+1. ✔ "Bllm" = vLLM (docs/00 §B).
 2. Ada: GPU type, account/partition, wall-time limit, scratch paths, `--exclusive`, internet on compute nodes.
 3. Deadline and report format.
 4. Judge model choice (non-Qwen) and the κ threshold sign-off.
-5. FEVER in or out (week-2 budget check).
+5. ✔ FEVER and zsRE in (3 tasks). Open: confirm with the professor that 3 tasks (not 2) was meant.
 6. Reference lists and citing papers of Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452; chunking-vs-cost papers. (Bibliographic details of the 8 core papers are now verified.)
 7. vLLM version that runs fp16 on Ada GPUs; Qwen2.5 fp16 sanity check. (Floor verified: compute capability ≥ 7.5, so no 1080 Ti.)
 8. Pyserini docid format (index name verified).
-9. Measured throughput and token counts to replace the planning assumptions in `scripts/budget.py` and `configs/cost_weights.yaml`.
+9. Measured cost weights: job K before the full run (code done 30 Oct). Pilot generation times already
+   replace the budget assumptions (`scripts/budget.py`, measured extrapolation).
 10. ✔ Dataset ids, field names and split sizes verified; loaders run on the real data.

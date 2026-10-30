@@ -19,6 +19,10 @@ We ask two questions:
    at equal cost? How much of that gap is noise?
 2. **Can it be predicted cheaply?** Can a router choose a configuration from the question alone (Router A),
    or from the question plus cheap post-retrieval signals (Router B, signal cost charged)?
+3. **One router for all tasks, or one per task?** The study covers **three tasks**: open-domain QA (NQ-open,
+   HotpotQA, TriviaQA), fact verification (FEVER) and slot filling (zsRE). Each task has its own metric. We
+   train every router both **globally** (one router over all tasks) and **per task** (one router per task),
+   and compare them on the same test questions (§3.7).
 
 Research questions RQ1–RQ5 and hypotheses H1–H4 are listed in docs/01_proposal.md §3.
 
@@ -38,16 +42,22 @@ The dataset, model, method and tool references (9–25) were checked the same wa
 
 ## 3. Experimental setup
 
-### 3.1 Data
-| Dataset | Type | Full split used | Sampled (full run) | Pilot |
-|---|---|---|---|---|
-| NQ-open (HF `validation` = standard NQ-open test set) | single-hop, open-domain | 3,610 | 1,000 | 100 |
-| HotpotQA (distractor, validation; questions/answers/supporting titles only) | multi-hop (bridge / comparison) | 7,405 | 1,000 | 100 |
-| TriviaQA (unfiltered.nocontext, validation) | single-hop, trivia | 11,313 | 1,000 | 100 |
-| FEVER (KILT, validation) | claim verification | 10,444 | optional | – |
+### 3.1 Data: three tasks, five datasets
+The three QA datasets are one task (open-domain QA), so we add two other tasks: fact verification and slot
+filling. All five datasets use the same DPR Wikipedia index.
 
-Sampling is seeded and stratified (HotpotQA by question type). The full split sizes above were checked
-against the loaded data.
+| Task | Dataset | Type | Full split used | Sampled (full run) | Pilot |
+|---|---|---|---|---|---|
+| 1. Open-domain QA | NQ-open (HF `validation` = standard NQ-open test set) | single-hop, open-domain | 3,610 | 1,000 | 100 |
+| 1. Open-domain QA | HotpotQA (distractor, validation; questions/answers/supporting titles only) | multi-hop (bridge / comparison) | 7,405 | 1,000 | 100 |
+| 1. Open-domain QA | TriviaQA (unfiltered.nocontext, validation) | single-hop, trivia | 11,313 | 1,000 | 100 |
+| 2. Fact verification | FEVER (KILT, validation) | claim → SUPPORTS / REFUTES | 10,444 | 1,000 | – |
+| 3. Slot filling | zsRE (KILT `structured_zeroshot`, validation) | "subject \| relation" → missing entity | 3,724 | 1,000 | – |
+
+Sampling is seeded and stratified (HotpotQA by question type, FEVER by label). The full split sizes above
+were checked against the data (FEVER and zsRE on 30 Oct). **The pilot covered only the QA task.** FEVER and
+zsRE are fully implemented (loaders, prompts, metrics, gold-passage mapping; the zsRE loader was checked on
+real validation rows) and enter in the full run.
 
 **Grouped split.** Questions that share a gold Wikipedia title are joined with union-find and kept in the
 same split, so the test set never shares a gold article with training. The split is 60/20/20 per dataset.
@@ -140,14 +150,42 @@ Other details from the AutoRAG source:
 - Node validation is disabled, because its temporary run broke on Chroma paths.
 
 ### 3.5 Metrics and cost
-- **Quality.** Pre-committed primary metrics: EM and token F1 (SQuAD normalisation) against all gold
-  answers. Retrieval recall@k is a diagnostic. RAGAS is secondary, and used only after the 150-item
-  human validation (docs/05).
+- **Quality: one natural metric per task.** All are per-question scores in [0, 1] and are pre-committed.
+
+  | Task | Router target / oracle label | Also reported |
+  |---|---|---|
+  | Open-domain QA | token F1 (SQuAD normalisation, max over gold aliases) | EM |
+  | Fact verification | accuracy (SUPPORTS / REFUTES) | invalid-verdict rate |
+  | Slot filling | exact match over gold aliases (KILT's "accuracy" for zsRE) | token F1 |
+
+  Retrieval recall@k is a diagnostic. RAGAS is secondary, and used only after the 150-item human
+  validation (docs/05).
+- **Normalisation across metrics.**
+  - We do not rescale scores per configuration or per question (decision D14). That would depend on which
+    configurations are in the grid, and would break when all configurations tie.
+  - Instead, every result is reported per task and per dataset. Pooled numbers are given three ways:
+    micro (per question), macro over datasets, and **macro over tasks**, so no single metric can dominate a
+    pooled number.
+  - FEVER accuracy has a 0.5 chance floor, so we also report a chance-corrected FEVER score (2·acc − 1) as a
+    sensitivity check.
 - **Marginal cost per query:**
 
   `cost = a_in[g]·input_tokens + a_out[g]·output_tokens + b·LLM_calls + c·rerank_pairs + d·index_queries`
 
-  - Weights are generator-specific (configs/cost_weights.yaml).
+  - The **counts** (tokens, calls, reranker pairs, index queries) are exact.
+  - The **weights** are generator-specific. **In the pilot they are placeholder estimates** from planning
+    throughput (configs/cost_weights.yaml), so pilot costs below are in placeholder units.
+  - **Before the full run we measure them** on the full run's GPU and serving engine (Ada job K,
+    `ragroute.harness.calibrate`):
+    - Generation: the same 200 real prompts at k ∈ {1, 3, 10} passages, each with a forced output length of
+      1 or 32 tokens, 3 repeats, prefix caching off. Changing k moves only input tokens and changing the
+      output length moves only output tokens, so a non-negative least-squares fit separates the cost per
+      input token, per output token and per call.
+    - Reranker: time per query–passage pair.
+    - Index queries: AutoRAG's own per-query retrieval time.
+
+    `scripts/calibrate_costs.py` writes the fitted weights. They then become the default, and the
+    placeholder sets remain only for the weight-sensitivity table (T8).
   - Offline cost (indexing, embedding the corpus) is reported separately, with amortisation.
   - Measured prompt sizes: about 147 tokens per passage, so roughly 521 input tokens at k = 3 and
     1,550 at k = 10.
@@ -165,12 +203,37 @@ Other details from the AutoRAG source:
   - Output token counts come from the server's `usage` field.
   - Input token counts come from the generator's tokenizer and chat template.
 
+### 3.7 Routers: global and per task
+Each router predicts the quality of every configuration for a question and picks argmax q̂ − λ·ĉ. λ is chosen
+on dev, and results are reported on test.
+
+| Router | Trained on | λ chosen on | Compared on |
+|---|---|---|---|
+| **Global** | all train questions, all tasks pooled (task identity enters only through the dataset features) | all dev questions | all test questions, and each task's test questions separately |
+| **Per task** | that task's train questions only | that task's dev questions | that task's test questions |
+| **Per task, combined** | each test question routed by its own task's router | per task | all test questions (directly comparable with the global router) |
+
+Both variants exist for Router A (question only) and Router B (+ retrieval signals).
+
+**Baselines:**
+- best static configuration overall, and per task;
+- per-dataset static;
+- the Adaptive-RAG-style classifier, whose classes are now single-hop, multi-hop, verification and slot filling.
+
+In a task's block, the global router and that task's own router are both compared with the best static
+configuration chosen on that task's train split. Every headline table has a Holm-adjusted p-value within
+its family.
+
 ## 4. Progress so far
 | Item | Status |
 |---|---|
 | Proposal, experiment design with decision records (D1–D24), risk register, plan | done (docs/01–09) |
 | Citations verified | done (8 core + 17 dataset, model and tool references) |
-| Code: data prep, mining, corpus, splits, AutoRAG YAMLs, staged runner, features, oracle, cost, routers, bootstrap, tables, plots | done; 26 unit tests pass |
+| Code: data prep, mining, corpus, splits, AutoRAG YAMLs, staged runner, features, oracle, cost, routers, bootstrap, tables, plots | done |
+| Tasks 2 and 3: FEVER and zsRE loaders, prompts, per-task metrics (accuracy, EM), gold mapping, dataset features | done in code (30 Oct); zsRE loader checked on real rows; first run in the full grid |
+| Global + per-task routers, per-task static baseline, macro-over-task reporting, Holm correction in the headline and breakdown tables | done in code (30 Oct); checked end to end on synthetic data |
+| Cost-weight calibration: timing job (job K) and weight fit (`scripts/calibrate_costs.py`) | code done (30 Oct); runs on Ada after the engine decision, before the full run |
+| Unit tests | 32 tests (30 run locally; 2 need `chromadb`, which is installed on Ada) |
 | Local AutoRAG validation (prefix check, reranker ID sets, features, token counts) | done |
 | Bugs found and fixed by tests and runs | 10. Examples: AutoRAG node files use unsuffixed columns; the transformers-5 chat template returns a dict; AutoRAG breaks on pandas 3; the validator crashes on rerun |
 | Ada environments (AutoRAG + torch for sm_61; Pyserini + JDK 21; llama.cpp built for sm_61/75) | done |
@@ -185,6 +248,9 @@ Other details from the AutoRAG source:
 > dataset). These numbers show the pipeline works end to end and give a first look at the headroom. They
 > are not final results, and every router comparison below has a confidence interval that includes 0.
 > Source files: `results/pilot/results/{tables,router,figures}` (Ada jobs 43945 and 44053, 28 Oct 2026).
+> The pilot covers **only the QA task** (FEVER and zsRE enter in the full run), so it has no per-task router
+> results yet. **Costs are in placeholder-weight units** (§3.5); cost *ratios* between configurations depend on
+> those weights, and token counts do not.
 
 **Table P1: Retrieval recall@k** (all 300 questions with a gold passage: HotpotQA 97, NQ 79, TriviaQA 88).
 For HotpotQA this is the share of the two gold articles that are hit. For NQ and TriviaQA it is whether
@@ -286,13 +352,14 @@ above it on test. Copies of `results/pilot/results/figures/F2_pareto_test.png` a
 ## 6. Plan to the final report (21 Nov)
 | Dates | Work |
 |---|---|
-| 1–7 Nov | 1M sub-corpus; full grid on 3 × 1,000 questions (about 4 sequential 6 h GPU jobs); oracle table; retrieval features |
-| 8–14 Nov | Cost calibration and weight sensitivity; 150-item judge annotation; Router A / B with 5 seeds; λ selection on dev; ablations |
-| 15–19 Nov | Breakdowns by dataset and question type (Holm-corrected); error analysis; "where routing does not help"; final figures |
+| 31 Oct–2 Nov | Choose the generation engine (vLLM fp16 check); **cost calibration job K on that engine and GPU, before any full-run generation**; sample FEVER and zsRE (1,000 each) |
+| 1–7 Nov | 1M sub-corpus for all 5 datasets; full grid on 5 × 1,000 questions (≈ 7 GPU-h on vLLM, ≈ 26 GPU-h on llama.cpp, extrapolated from the pilot); oracle table; retrieval features |
+| 8–14 Nov | Weight sensitivity; 150-item judge annotation; Routers A / B, **global and per task**, 5 seeds; λ selection on dev; ablations |
+| 15–19 Nov | Breakdowns by task, dataset and question type (Holm-corrected); error analysis; "where routing does not help"; final figures |
 | 20–21 Nov | Review and submit |
 
-Cut order if behind: latency study → MLP router → RAGAS at scale → TriviaQA → 1,000 to 500 questions
-per dataset. Details: docs/07.
+Cut order if behind: latency study → MLP router → RAGAS at scale → TriviaQA (a third QA dataset, not a task) →
+1,000 to 500 questions per dataset. The three tasks are never cut. Details: docs/07.
 
 ## 7. Risks and changes from the proposal
 - **Serving engine and weights.** The pilot used llama.cpp on a GTX 1080 Ti, with the 7B model in 8-bit
@@ -312,6 +379,17 @@ per dataset. Details: docs/07.
   §3.4). Running one request at a time would remove it, but we expect (not measured) it to roughly double or
   triple generation time for the full run. Decision: keep parallel serving, report the measured flip rate, and re-measure it for the 7B model.
 - **Ada limits.** One 6 h job at a time. Every stage caches per unit and resumes after a timeout.
+- **Changes since the proposal:**
+  - **Tasks.** The professor asked for several tasks, not just datasets, so FEVER (verification) and zsRE
+    (slot filling) are now core, with one metric per task and global vs per-task routers.
+  - **Per-task data.** Each new task has about 200 test questions, so per-task confidence intervals will be
+    wider than the pooled ones.
+  - **Gold mapping.** FEVER and zsRE come from KILT's 2019 Wikipedia snapshot while the corpus is the
+    2018 DPR dump. Some gold titles may not map; as with HotpotQA, unmapped questions are kept, and the gap
+    affects retrieval recall only, not answer scores.
+- **Cost weights.** Pilot costs use placeholder weights. If the measured weights differ a lot, the cost
+  ranking of configurations can change. The weight-sensitivity table (T8) and the countable components,
+  reported separately, guard against this.
 
 ## References
 Full list in docs/01_proposal.md: core works 1–8 and dataset/model/method/tool references 9–25, all checked

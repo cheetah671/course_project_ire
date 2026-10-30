@@ -9,7 +9,7 @@ Every table and figure is produced by code (`analysis/tables.py`, `analysis/plot
 | T1 | Datasets and corpus | dataset × {source split, size (VERIFY), sampled n, train/dev/test, gold-mapping rate}; corpus: full passages, sub-corpus composition (mined / gold neighbours / random) | `corpus_stats.json`, `leakage_report.json` |
 | T2 | Static grid | 24 configs × dataset: EM, F1 [95% CI], input tokens, output tokens, rerank pairs, index queries, scalar cost, cost CV | `T2_static_grid.csv` |
 | T3 | Oracle ceiling | per dataset + ALL: best static (chosen on train), oracle quality, headroom [CI], all-fail / all-succeed / mixed shares, #distinct oracle-best configs, top-label share | `T3_oracle_vs_static.csv` |
-| T4 | **Headline: routers vs best static** | {Router A, Router B (best model), Adaptive-RAG-style, per-dataset static, random, cheapest, oracle} × {iso-cost ΔQ [CI], p; iso-quality cost saving % [CI on ΔQ]; gap closed} | `headline.csv` |
+| T4 | **Headline: routers vs best static** | {Router A, Router B (best model), each **global and per task**, Adaptive-RAG-style, per-task static, per-dataset static, random, cheapest, oracle} × {iso-cost ΔQ [CI], p, Holm p; ΔQ macro over datasets and over tasks; iso-quality cost saving % [CI on ΔQ]; gap closed}; one block for ALL test queries and one per task | `headline.csv` |
 | T5 | Ablations | feature set {A_noDS, A, A_noEmb, B, B_noDS, D_only, R_only} × model {LR, GBDT, MLP}: gap closed (mean ± seed SD), iso-cost ΔQ | `headline.csv` |
 | T6 | Where routing helps / does not | Router B vs static by dataset, hops, HotpotQA type: n, ΔQ [CI], p (Holm-adjusted) | `T6_breakdown_*.csv` |
 | T7 | Best config per question type | dataset × qtype: best, runner-up, win frequency, margin [CI], claim supported? | `T7_best_by_qtype.csv` |
@@ -26,6 +26,7 @@ Every table and figure is produced by code (`analysis/tables.py`, `analysis/plot
 | F1 | Method diagram: grid → oracle table → router (A: question; B: + probe) → Pareto evaluation | drawn by hand (draw.io), not data |
 | F2 | **Cost–quality Pareto, test, all datasets**: 24 static points (grey), static frontier, per-dataset static, Adaptive-RAG-style (grey dashes), Router A (blue), Router B (orange), oracle (aqua); direct labels; step curves | `F2_pareto_test.pdf` |
 | F3 | Same, one panel per dataset (small multiples, shared y) | `F3_pareto_by_dataset.pdf` |
+| F3b | Same, one panel per task (QA / verification / slot filling; global routers) | `F3b_pareto_by_task.pdf` |
 | F4 | Oracle-best share per config × hops type (heatmap, sequential blue) | `F4_oracle_winrate.pdf` |
 | F5 | Gap closed by feature set × model (bars; seed SD as error bars, to add) | `F6_ablation_gap_closed.pdf` |
 | F6 | GBDT gain by feature group (100% stacked bar) | `F7_importance.pdf` |

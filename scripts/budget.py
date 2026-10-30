@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import argparse
 
-DATASETS = {"nq": 1000, "hotpotqa": 1000, "triviaqa": 1000, "fever": 1000}
+DATASETS = {"nq": 1000, "hotpotqa": 1000, "triviaqa": 1000, "fever": 1000, "zsre": 1000}
+# Measured on the pilot (Ada job 43945, GTX 1080 Ti, llama.cpp, 300 questions x 12 configs per generator)
+PILOT_MIN = {"qwen7b": 73.0, "qwen1p5b": 19.0}
+PILOT_QUERIES = 300
 
 
 def tokens_per_call(k: int, passage_tokens: int, overhead: int) -> int:
@@ -31,6 +34,7 @@ def main():
     ap.add_argument("--judge-tps", type=float, default=2500.0, help="7-8B judge on 2 GPUs (ASSUMED)")
     ap.add_argument("--api-in", type=float, default=0.15, help="$ per 1M input tokens (ILLUSTRATIVE, VERIFY)")
     ap.add_argument("--api-out", type=float, default=0.60, help="$ per 1M output tokens (ILLUSTRATIVE, VERIFY)")
+    ap.add_argument("--vllm-speedup", type=float, default=3.5, help="vLLM/2080 Ti vs llama.cpp/1080 Ti (smoke test)")
     a = ap.parse_args()
 
     k_values, retr, rerank = [3, 10], 3, 2
@@ -42,7 +46,9 @@ def main():
     print(f"input tokens per query per generator (12 configs): {per_q_per_gen:,}")
     print()
     print(f"{'datasets':<34}{'queries':>8}{'LLM calls':>11}{'in tok (M)':>11}{'gen GPU-h':>10}{'judge-all GPU-h':>16}{'judge-all $':>12}")
-    for names in (["nq", "hotpotqa"], ["nq", "hotpotqa", "triviaqa"], ["nq", "hotpotqa", "triviaqa", "fever"]):
+    scopes = (["nq", "hotpotqa"], ["nq", "hotpotqa", "triviaqa"], ["nq", "hotpotqa", "triviaqa", "fever"],
+              ["nq", "hotpotqa", "triviaqa", "fever", "zsre"])
+    for names in scopes:
         n = sum(DATASETS[d] for d in names)
         calls = n * 24
         tin_gen = n * per_q_per_gen  # per generator
@@ -58,10 +64,17 @@ def main():
           f"+{2 * 1000 * per_q_per_gen / 1e6:.1f}M input tokens, "
           f"+{(1000 * per_q_per_gen / a.prefill_7b / 3600 * a.gpus_7b + 1000 * per_q_per_gen / a.prefill_1p5b / 3600) * a.overhead_factor:.1f} generation GPU-h")
     for n_sub in (100, 200):
-        items = n_sub * 4 * 24
+        items = n_sub * 5 * 24
         h = items * a.judge_in_tokens / a.judge_tps / 3600 * 2 * a.overhead_factor
-        print(f"RAGAS subsample {n_sub} q/dataset x 24 configs x 4 datasets = {items:,} items -> {h:.1f} judge GPU-h")
+        print(f"RAGAS subsample {n_sub} q/dataset x 24 configs x 5 datasets = {items:,} items -> {h:.1f} judge GPU-h")
     print(f"Judge validation: 150 items -> {150 * a.judge_in_tokens / a.judge_tps / 3600 * 2:.2f} GPU-h")
+    print()
+    print("MEASURED extrapolation from the pilot generation times (more reliable than the assumptions above):")
+    for names in scopes:
+        n = sum(DATASETS[d] for d in names)
+        h_llama = sum(PILOT_MIN.values()) / 60 * n / PILOT_QUERIES
+        print(f"  {'+'.join(names):<34}{n:>6,} q: llama.cpp/1080 Ti {h_llama:5.1f} GPU-h;"
+              f" vLLM/2080 Ti (x{a.vllm_speedup} measured in the smoke test) {h_llama / a.vllm_speedup:5.1f} GPU-h")
 
 
 if __name__ == "__main__":

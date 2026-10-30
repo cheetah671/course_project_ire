@@ -28,12 +28,15 @@ YEAR = re.compile(r"\b(1[0-9]{3}|20[0-9]{2})\b")
 NUM = re.compile(r"\b\d+(?:[.,]\d+)?\b")
 
 DATASET_ATTRS = {
-    # dataset-level attributes (domain-level, not per-query): multi-hop?, verification task?, trivia style?
-    "nq": {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 0},
-    "hotpotqa": {"ds_multihop": 1, "ds_verification": 0, "ds_trivia_style": 0},
-    "triviaqa": {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 1},
-    "fever": {"ds_multihop": 0, "ds_verification": 1, "ds_trivia_style": 0},
+    # dataset-level attributes (domain-level, not per-query): multi-hop?, verification task?, trivia style?,
+    # slot-filling task?
+    "nq": {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 0, "ds_slot_filling": 0},
+    "hotpotqa": {"ds_multihop": 1, "ds_verification": 0, "ds_trivia_style": 0, "ds_slot_filling": 0},
+    "triviaqa": {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 1, "ds_slot_filling": 0},
+    "fever": {"ds_multihop": 0, "ds_verification": 1, "ds_trivia_style": 0, "ds_slot_filling": 0},
+    "zsre": {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 0, "ds_slot_filling": 1},
 }
+_NO_ATTRS = {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 0, "ds_slot_filling": 0}
 
 
 def entity_spans(text: str) -> list[str]:
@@ -74,7 +77,7 @@ def query_surface_features(query: str) -> dict:
 
 def data_features(dataset: str, all_datasets: list[str]) -> dict:
     f = {f"ds_is_{d}": int(dataset == d) for d in all_datasets}
-    f.update(DATASET_ATTRS.get(dataset, {"ds_multihop": 0, "ds_verification": 0, "ds_trivia_style": 0}))
+    f.update(DATASET_ATTRS.get(dataset, _NO_ATTRS))
     return f
 
 

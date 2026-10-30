@@ -53,22 +53,32 @@ datasets:
     n: 1000
     stratify_by: qtype             # HotpotQA `type` (bridge vs comparison) is stored as qtype
   triviaqa:
-    enabled: true                  # extra dataset 1 (recommended)
+    enabled: true                  # third QA dataset (same task as NQ/HotpotQA: open-domain QA)
     task: qa
     hops: single
     hf_id: mandarjoshi/trivia_qa
     hf_config: unfiltered.nocontext
     hf_split: validation
     n: 1000
+  # The professor asked for at least 2 (possibly 3) TASKS, not just datasets. NQ, HotpotQA and TriviaQA are all
+  # one task (open-domain QA). FEVER (task 2) and zsRE (task 3) are therefore part of the core design, not optional.
   fever:
-    enabled: false                 # extra dataset 2 (optional, non-QA). Turn on only if budget check passes.
+    enabled: true                  # task 2: fact verification (metric: accuracy)
     task: verification
     hops: single
     hf_id: facebook/kilt_tasks
     hf_config: fever
-    hf_split: validation
+    hf_split: validation           # 10,444 rows (checked 2026-10-30)
     n: 1000
     stratify_by: qtype             # FEVER label (supports/refutes) is stored as qtype
+  zsre:
+    enabled: true                  # task 3: slot filling (metric: exact match = KILT "accuracy"). One flag to drop it.
+    task: slot_filling
+    hops: single
+    hf_id: facebook/kilt_tasks
+    hf_config: structured_zeroshot # KILT zsRE; input "subject [SEP] relation", output = object entity (+ aliases)
+    hf_split: validation           # 3,724 rows (checked 2026-10-30); relations unseen in KILT's zsRE train split
+    n: 1000
 
 split:
   train: 0.6
@@ -146,6 +156,11 @@ prompts:
       content: "You are a fact-checking assistant. Reply with exactly one word: SUPPORTS or REFUTES."
     - role: user
       content: "Passages:\n{retrieved_contents}\n\nClaim: {query}\nVerdict:"
+  slot_filling:
+    - role: system
+      content: "You fill in missing facts. The input is 'subject | relation'. Reply with the missing value only, as a short phrase."
+    - role: user
+      content: "Passages:\n{retrieved_contents}\n\nInput: {query}\nValue:"
 
 judge:
   model: VERIFY_choose_after_validation   # must NOT be a Qwen model (self-preference bias)

@@ -46,6 +46,8 @@ def collect(cfg: dict) -> pd.DataFrame:
     runs = runs.merge(struct, on="config_id", validate="m:1")
     weights = load_cost_weights()
     runs["cost"] = scalar_cost(runs, weights["weight_sets"][weights["default"]])
+    runs["cost_weight_set"] = weights["default"]  # "measured" after calibration; a placeholder set otherwise
+    print(f"scalar cost uses weight set: {weights['default']}")
     return runs.drop(columns=["answers"])
 
 

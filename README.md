@@ -5,6 +5,10 @@ into oracle labels: for each query we know which configs succeed and what each c
 much of the oracle's cost-quality headroom a router recovers over the best static config, from the
 question alone (Router A) and with cheap post-retrieval signals (Router B).
 
+Three tasks over one Wikipedia index: open-domain QA (NQ-open, HotpotQA, TriviaQA; F1), fact verification
+(FEVER; accuracy) and slot filling (zsRE; exact match). Every router is trained globally and per task. Cost
+weights are measured on the full run's GPU before the full run (`slurm/ada/jobK_calibrate_gpu.sbatch`).
+
 | Document | Contents |
 |---|---|
 | [docs/00_assumptions_open_items.md](docs/00_assumptions_open_items.md) | Assumptions, open items, the unresolved "Bllm" term |

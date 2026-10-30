@@ -39,6 +39,13 @@ dependency chains). They will be rewritten as single-job, 1-GPU, ≤ 6 h scripts
 
 `scripts/run_pipeline.sh` submits 01 → 02 → 03 → 05 with `--dependency=afterok`.
 
+**Cost-weight calibration (job K, before the full run).** After the engine decision (vLLM vs llama.cpp), run
+`sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobK_calibrate_gpu.sbatch` on an RTX 2080 Ti node (≤ 3 h,
+1 GPU). It times generation at 3 prompt sizes × 2 forced output lengths × 3 repeats per generator, and the
+reranker, all on the pilot's cached passages. It then fits the weights into `configs/cost_weights_measured.yaml`.
+Commit that file. From then on, `collect` uses the measured weights. Set `RAGROUTE_BACKEND=llamacpp
+RAGROUTE_ENV=ragroute` to calibrate llama.cpp instead.
+
 ## Queue and time-limit strategy
 - Every expensive stage writes one file per unit (per retriever, per config) and skips finished units,
   so a job killed at the wall-time limit loses at most one unit. Resubmit the same script.

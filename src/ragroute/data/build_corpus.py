@@ -6,12 +6,14 @@ id/text/title) unchanged. contents = "{title}\n{text}" (DPR convention of prepen
 Sub-corpus = union of
   (1) full-corpus BM25 top-`bm25_mining_depth` for every sampled query      (mined_bm25.parquet)
   (2) full-corpus dense top-`dense_mining_depth` (only if mined_dense.parquet exists)
-  (3) the first `article_neighbours` passages of every gold title (HotpotQA supporting titles, FEVER provenance)
+  (3) the first `article_neighbours` passages of every gold title (HotpotQA supporting titles, FEVER / zsRE
+      KILT provenance titles)
   (4) uniform random passages (seeded) until `subcorpus_size` is reached
 
 Gold passages (AutoRAG retrieval_gt, outer list = AND groups, inner list = OR):
   hotpotqa : one group per supporting title = first 2 passages of that article (intro paragraph)
   fever    : one OR group = first 2 passages of every provenance title
+  zsre     : same as fever (KILT provenance = the subject's article)
   nq/trivia: one OR group = mined passages whose normalised text contains a normalised gold answer
              (DPR "has_answer"-style heuristic; title excluded from matching)
   no match : [[]] (kept, flagged has_gold=False; we do NOT drop them, to avoid selection bias)
@@ -180,7 +182,7 @@ def build(cfg: dict) -> None:
                       for t in row.gold_titles]
             groups = [g for g in groups if g] or [[]]
             titles = list(row.gold_titles)
-        else:  # fever / other verification
+        else:  # fever, zsre (KILT provenance titles)
             ids = [i for t in row.gold_titles for i in title_to_ids.get(norm_title(t), [])[:INTRO_PASSAGES]]
             groups = [[f"{prefix}{i}" for i in ids]] if ids else [[]]
             titles = list(row.gold_titles)

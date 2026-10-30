@@ -56,11 +56,16 @@ Values live in `configs/experiment.yaml`; this document explains them.
 | NQ-open (HF `google-research-datasets/nq_open`, validation, 3,610 ✔) | single-hop | Real user search questions with short answers, the standard open-domain QA benchmark on DPR Wikipedia. Lexically varied, so dense vs BM25 differences are expected. | yes | base |
 | HotpotQA (HF `hotpotqa/hotpot_qa`, distractor config, validation 7,405 ✔; 80% bridge / 20% comparison; questions/answers/supporting titles only) | multi-hop | Bridge and comparison questions needing two articles, where k and generator size should matter most. Provides question-type labels for the per-type analysis. | yes (title mapping) | base |
 | **TriviaQA** (unfiltered.nocontext, validation 11,313 ✔; ~14 answer aliases per question on average, so EM is more lenient than on NQ) — **recommended extra** | single-hop, different style | Trivia questions written independently of evidence: longer, entity-rich, and known to be friendly to lexical retrieval, so the best retriever plausibly differs from NQ. Uses the same DPR index as in the DPR paper, so it adds query diversity at zero corpus cost. | yes | +1,000 queries: +24,000 LLM calls, +24.9M input tokens, **+4.0 generation GPU-h** |
-| **FEVER** (KILT version, 2-way SUPPORTS/REFUTES; validation 10,444 ✔; 205 duplicate claims removed by our filter; sample is ~50/50 SUPPORTS/REFUTES) — optional | non-QA verification | Tests whether one router transfers across task types and exercises the metric normalisation (accuracy vs F1). Claims are short and evidence is single-article, so a cheap config may often suffice. | yes (title mapping; claims from a 2017 snapshot) | +1,000 queries: +24,000 calls, ~+3.5 GPU-h (shorter outputs) |
+| **FEVER** (KILT version, 2-way SUPPORTS/REFUTES; validation 10,444 ✔; 205 duplicate claims removed by our filter; sample is ~50/50 SUPPORTS/REFUTES) — **task 2, core** | non-QA verification | Tests whether one router transfers across task types and exercises the metric normalisation (accuracy vs F1). Claims are short and evidence is single-article, so a cheap config may often suffice. | yes (title mapping; claims from a 2017 snapshot) | +1,000 queries: +24,000 calls, ~+3.5 GPU-h (shorter outputs) |
+| **zsRE** (KILT `structured_zeroshot`, validation 3,724 ✔ 30 Oct; input "subject [SEP] relation", stored as "subject \| relation"; answers = all KILT output aliases; gold = provenance titles) — **task 3, core** | slot filling | A third task type: retrieve the subject's article and extract one fact. Answers are entities or dates, so the metric is exact match (KILT's "accuracy"), a third metric next to F1 and accuracy. | yes (title mapping; KILT 2019 snapshot) | +1,000 queries: +24,000 calls, ~+4 GPU-h (assumed) / ~+1.5 GPU-h (pilot-measured, vLLM) |
 | MuSiQue / 2WikiMultiHopQA — not chosen | multi-hop | Harder compositional multi-hop questions. Their evidence comes from their own paragraph pools, so sharing the DPR index needs another mapping step. | partly | same per-dataset cost; extra mapping effort |
 
-Decision: base = NQ + HotpotQA; add TriviaQA by default (cheap, same index). FEVER is added after the
-week-2 budget check; it is the first item dropped if time is short.
+Decision (revised 30 Oct): **three tasks**, because the professor asked for several tasks, not only datasets.
+Task 1 open-domain QA = NQ + HotpotQA + TriviaQA; task 2 fact verification = FEVER; task 3 slot filling =
+zsRE. All share the DPR index. The tasks are never cut. If time is short, TriviaQA (a third dataset of
+task 1) goes first. Alternatives for task 3: ELI5 long-form QA (ROUGE-L; needs ~10× longer outputs and a weak
+metric) or Wizard of Wikipedia dialogue (F1 / ROUGE; long dialogue inputs); zsRE is the cheapest real third
+task. Dropping it is one flag (`datasets.zsre.enabled`) if the professor confirms 2 tasks suffice.
 
 ### D5. Sampling and split
 - **Sampling** (`data/prepare_qa.py`): drop items without a gold answer and exact duplicate questions;
@@ -172,6 +177,11 @@ output tokens per item, 7–9B judge on 2 GPUs at 2,500 tok/s.
 | NQ + HotpotQA | 2,000 | 48,000 | 49.7M | **8.1** | 48.5 | 34 (cheap tier) / 564 (strong tier) |
 | + TriviaQA | 3,000 | 72,000 | 74.6M | **12.1** | 72.8 | 51 / 846 |
 | + FEVER | 4,000 | 96,000 | 99.4M | **16.2** | 97.1 | 68 / 1,128 |
+| + zsRE (current plan) | 5,000 | 120,000 | 124.3M | **20.2** | 121.3 | 85 / 1,410 |
+
+**Measured extrapolation (30 Oct, replaces the assumptions above for planning):** the pilot took 73 + 19 min
+of generation for 300 questions × 24 configs on llama.cpp / GTX 1080 Ti. For 5 × 1,000 questions that is
+≈ 25.6 GPU-h on llama.cpp, or ≈ 7.3 GPU-h on vLLM / RTX 2080 Ti (3.5× faster in the smoke test).
 
 † Illustrative prices only: "cheap tier" $0.15 / $0.60 per 1M input/output tokens, "strong tier"
 $2.50 / $10. **VERIFY against current price sheets; never quote these as real costs.**
@@ -196,16 +206,18 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
 
 ### D13. Primary quality metric (pre-committed)
 - **EM and token-F1** on short gold answers, SQuAD normalisation, max over gold aliases.
-  **Router target and oracle label: per-query F1** (QA) / **accuracy** (FEVER).
+  **Router target and oracle label: per-query F1** (QA) / **accuracy** (FEVER) / **EM** (zsRE slot filling:
+  the object is an entity or date, so partial token overlap is not partial credit; F1 is reported alongside).
 - **Why F1 as target, not EM.** EM is binary and strict (a correct "President Obama" vs gold "Obama"
   scores 0), which inflates ties and label noise in the oracle. F1 is graded. EM is still reported
   everywhere, and the 150-item human study measures EM's false-negative rate.
 - Lenient "contains gold" is a diagnostic only, never a headline number.
 
 ### D14. Normalisation across datasets/metrics
-- **Decision.** Keep every per-query score in its native [0, 1] scale (F1 for QA, accuracy for FEVER).
-  No per-config or per-query rescaling. Report per dataset always; pooled numbers both micro
-  (per query) and macro (equal weight per dataset).
+- **Decision.** Keep every per-query score in its native [0, 1] scale (F1 for QA, accuracy for FEVER, EM for
+  zsRE). No per-config or per-query rescaling. Report per task and per dataset always; pooled numbers three
+  ways: micro (per query), macro over datasets, and **macro over tasks** (each task's metric weighs equally;
+  implemented as `dQ_macro_task` in the headline table).
 - **Alternatives and pitfalls.**
   - *Per-dataset z-score across configs:* depends on which configs are in the grid (adding a config
     changes every score); amplifies noise where configs barely differ; not interpretable as quality.
@@ -269,8 +281,21 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
 
 ### D17. Countable marginal cost with generator-specific token weights
 - **Decision.** `cost = a_in[g]·input_tokens + a_out[g]·output_tokens + b·llm_calls + c·rerank_passes + d·index_queries`
-  (`cost.py`, `configs/cost_weights.yaml`). Units: GPU-ms equivalents, calibrated from the week-1 pilot
-  (`stage_timings.jsonl`): a_in[g] = GPUs × 1000 / prefill tok/s, etc.
+  (`cost.py`, `configs/cost_weights.yaml`). Units: GPU-ms equivalents.
+- **Calibration (added 30 Oct; must run before the full run).** The counts are exact. The weights were
+  placeholders, and the pilot's `stage_timings.jsonl` cannot identify them: it logs one total time per config,
+  output length is nearly constant (~8 tokens), and it was measured on a different engine and GPU. Job K
+  (`slurm/ada/jobK_calibrate_gpu.sbatch` → `ragroute.harness.calibrate`) therefore times, on the full run's
+  engine and GPU:
+  - the same 200 real prompts at k ∈ {1, 3, 10} × forced output length {1, 32} (`min_tokens = max_tokens`,
+    EOS ignored) × 3 repeats, in shuffled order, with prefix caching off;
+  - the cross-encoder on 200 × 20 pairs.
+
+  `scripts/calibrate_costs.py` fits a_in[g], a_out[g], b_g by non-negative least squares (warning if
+  R² < 0.95), c from the reranker timings, and d from AutoRAG's per-query retrieval time. It writes
+  `configs/cost_weights_measured.yaml`. `load_cost_weights()` then uses the set "measured" as the default
+  (falling back to the placeholder set with a warning). `runs_scored.parquet` records which set was used
+  (`cost_weight_set`).
 - **Deviation from the spec's single `a`, and why.** One weight for all tokens would make a 7B token
   cost the same as a 1.5B token, so the generator choice would be free. `a` is therefore indexed by
   generator, and input/output tokens are separated (decode is far costlier per token). Setting
@@ -306,6 +331,21 @@ cost, split, dataset, question type. Oracle policies (`oracle.py`): **oracle_bes
 ties → cheapest), **oracle_cheapest_ok** (cheapest config with EM-style success), **oracle_λ**
 (argmax q − λc on true labels; the oracle Pareto curve). Label diagnostics: share of queries where all
 configs fail / all succeed / mixed, number of distinct oracle-best configs, top-label share.
+
+### D20b. Global vs per-task routers (added 30 Oct)
+- **Decision.** Every router is trained twice:
+  - **globally:** one model over all tasks, with task identity available only through the dataset features;
+  - **per task:** one model per task, trained, λ-selected and tested on that task's queries only.
+
+  "Per task, combined" routes each test query with its own task's router, so it can be compared with the
+  global router on all test queries. The headline table has an ALL block (global vs combined per-task) and
+  one block per task (global router restricted to the task vs the task's own router, both against the
+  best static config chosen on that task's train split). A per-task static baseline is added (D23).
+- **Why both.** A global router shares statistical strength across tasks and can learn task identity. A
+  per-task router avoids negative transfer between metrics with different scales (F1 / accuracy / EM). Which
+  one wins is itself a result about how routing generalises across tasks.
+- **Risk.** Per-task training sets are smaller (~600 queries for FEVER and zsRE; ~1,800 for QA), so per-task
+  CIs are wider. With > 1 task, the Holm correction is applied within each (evaluation set, mode) family.
 
 ### D20. Formulation: pooled quality regression, then argmax q̂ − λĉ (recommended)
 - **Decision.** One model predicts q̂(query, config) ∈ [0, 1] from [query features, data features,
@@ -346,9 +386,10 @@ as signals; they would not be cheap.
 
 ### D23. Baselines (all fit on train)
 Best static (argmax train quality); best static under a cost budget, i.e. the static λ-frontier;
-cheapest config; uniform random router (exact per-query expectation); **per-dataset best static**
+cheapest config; uniform random router (exact per-query expectation); **per-task best static**;
+**per-dataset best static**
 (uses dataset identity: tests how much "routing" is just knowing the dataset); **Adaptive-RAG-style**
-(LR complexity classifier on question text → {single, multi, verification} → best static per class,
+(LR complexity classifier on question text → {single, multi, verification, slot_filling} → best static per class,
 with the classifier's cost charged as Router A); oracle (best, λ-curve). Reference only: the best static
 chosen on test (optimistic).
 
@@ -358,7 +399,9 @@ chosen on test (optimistic).
   best static's. Evaluated once on test.
 - Headline numbers per router: ΔQ vs best static at iso-cost; % cost saving at iso-quality (with ΔQ CI
   as non-inferiority evidence); **gap closed** = (Q_router − Q_static) / (Q_oracle@same cost − Q_static).
-- Breakdowns: per dataset, per hops type, per HotpotQA type (bridge / comparison), each with paired bootstrap.
+- Breakdowns: per task, per dataset, per hops type, per HotpotQA type (bridge / comparison), each with paired
+  bootstrap and Holm-adjusted p within the family (`p_holm` in T6; `dQ_p_holm` in the headline).
+- Global vs per-task routers (D20b): ALL block and one block per task in `headline.csv`.
 - Ablations: feature sets {A_noDS, A, A_noEmb, B, B_noDS, D_only, R_only} × models {LR, GBDT, MLP} ×
   5 seeds; λ sweep; reuse vs no-reuse; cost-weight sets.
 - Report where the router does not help, with CIs (section "Where routing does not help").

@@ -3,8 +3,10 @@
 Confirmed dates: **mid-submission Fri 2026-10-31**, **final deadline Fri 2026-11-21** (about 3.5 weeks).
 Ada limits (docs/04): 1 GPU, 1 job, 6 h per job, so GPU work is a queue of sequential 6-hour jobs.
 
-Scope cuts forced by the dates: 3 datasets (NQ, HotpotQA, TriviaQA); FEVER only if time allows; no dense
-mining; latency study optional; RAGAS on ~50 test questions per dataset after the 150-item validation.
+Scope (revised 30 Oct): 3 tasks over 5 datasets: open-domain QA (NQ, HotpotQA, TriviaQA), fact
+verification (FEVER) and slot filling (zsRE); routers trained globally and per task. Cuts forced by the dates:
+no dense mining; latency study optional; RAGAS on ~50 test questions per dataset after the 150-item validation.
+Cost weights are measured (job K) before the full run.
 
 ## Roles
 | Person | Owns | Main files |
@@ -42,4 +44,4 @@ mining; latency study optional; RAGAS on ~50 test questions per dataset after th
 | 15–19 Nov | Appendix (equivalence, environment); optional latency | Breakdowns T6, best-per-type T7 (Holm); check every claim has a CI | Error analysis; final figures F2–F7 | Full draft |
 | 20–21 Nov | Buffer, review, submit | | | Submitted |
 
-Cut order if behind: latency study → MLP router → RAGAS at scale (keep the 150-item validation) → 3rd dataset (TriviaQA) → n per dataset 1,000 → 500.
+Cut order if behind: latency study → MLP router → RAGAS at scale (keep the 150-item validation) → TriviaQA (3rd dataset of the QA task) → n per dataset 1,000 → 500. **The three tasks are never cut.**

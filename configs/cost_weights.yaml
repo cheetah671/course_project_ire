@@ -1,10 +1,15 @@
 # Countable cost model:
 #   cost = sum_g a_in[g]*input_tokens + a_out[g]*output_tokens + b*llm_calls + c*rerank_passes + d*index_queries
 # a depends on the generator g: a 7B token is not as expensive as a 1.5B token.
-# Units: "GPU-milliseconds equivalent". Defaults are PLACEHOLDERS derived from planning throughput;
-# replace them with the calibration measured in week 1 (scripts/calibrate_costs.py writes measured.yaml).
+# Units: "GPU-milliseconds equivalent".
+# The COUNTS (tokens, calls, rerank pairs, index queries) are exact. The WEIGHTS below are PLACEHOLDER estimates
+# from planning throughput. Before the full run, measure real timings on the full run's GPU and engine
+# (slurm/ada/jobK_calibrate_gpu.sbatch -> ragroute.harness.calibrate) and fit them with scripts/calibrate_costs.py,
+# which writes configs/cost_weights_measured.yaml. load_cost_weights() then adds that file as the set "measured"
+# and uses it as the default. Until then it falls back to measured_placeholder WITH A WARNING.
 
-default: measured_placeholder
+default: measured
+fallback_default: measured_placeholder
 
 weight_sets:
   measured_placeholder:

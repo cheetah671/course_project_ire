@@ -25,7 +25,7 @@ from ragroute.config import load_cost_weights, load_experiment
 from ragroute.cost import amortised_offline_per_query, random_weight_draws, scalar_cost
 from ragroute.oracle import label_statistics, oracle_best, wide
 from ragroute.router.policies import pareto_frontier
-from ragroute.stats.bootstrap import best_config_stability, bootstrap_mean_ci, paired_bootstrap
+from ragroute.stats.bootstrap import best_config_stability, bootstrap_mean_ci, holm, paired_bootstrap
 
 
 def static_grid(runs: pd.DataFrame, split: str = "test") -> pd.DataFrame:
@@ -62,14 +62,20 @@ def breakdown(picks: pd.DataFrame, runs: pd.DataFrame, policy: str, mode: str) -
     best_static = runs[runs["split"] == "train"].groupby("config_id")["quality"].mean().idxmax()
     ref = test[test["config_id"] == best_static].set_index("qid")
     sel = picks[(picks["policy"] == policy) & (picks["mode"] == mode)].groupby("qid")["quality"].mean()
-    df = ref[["dataset", "hops", "qtype", "quality"]].join(sel.rename("router"), how="inner")
+    cols = ["dataset", "hops", "qtype"] + (["task"] if "task" in ref.columns else [])
+    df = ref[cols + ["quality"]].join(sel.rename("router"), how="inner")
     rows = []
-    for col in ("dataset", "hops", "qtype"):
+    for col in cols:
+        if col == "task" and df["task"].nunique() < 2:
+            continue
         for val, g in df.groupby(col):
             b = paired_bootstrap(g["router"].to_numpy(), g["quality"].to_numpy())
             rows.append({"by": col, "value": val, "n": len(g), "router": b.mean_a, "static": b.mean_b,
                          "dQ": b.diff, "ci_low": b.ci_low, "ci_high": b.ci_high, "p": b.p_value})
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    if len(out):  # Holm-Bonferroni within each breakdown family (all datasets; all hops types; ...)
+        out["p_holm"] = out.groupby("by")["p"].transform(lambda p: holm(p.to_numpy()))
+    return out
 
 
 def best_by_qtype(runs: pd.DataFrame, split: str = "test") -> pd.DataFrame:

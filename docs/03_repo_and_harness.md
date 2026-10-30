@@ -17,6 +17,7 @@ src/ragroute/
   harness/run_stages.py      staged cached runner: retrieval (AutoRAG Evaluator) -> rerank -> generate
   harness/check_equivalence.py  staged runner vs AutoRAG end-to-end on 50 queries
   harness/collect.py         merge + score + cost                               -> runs_scored.parquet (oracle table)
+  harness/calibrate.py       timing job for the cost weights (generation at 3 prompt sizes x 2 output lengths; reranker)
   eval/metrics.py            EM, token-F1, verdict accuracy, answer extraction
   eval/ragas_eval.py         RAGAS faithfulness / answer relevancy on a subsample
   eval/judge_validation.py   150-item sample -> annotation sheet; agreement statistics
@@ -32,6 +33,7 @@ src/ragroute/
   synthetic.py               FAKE data for dry runs (never reported)
 slurm/                       Ada scripts (docs/04_slurm_ada.md)
 scripts/budget.py            budget arithmetic; record_offline_cost.py; run_pipeline.sh
+scripts/calibrate_costs.py   fit cost weights from measured timings -> configs/cost_weights_measured.yaml
 annotation/                  judge-validation template
 tests/                       unit tests + synthetic end-to-end test (19 tests)
 ```
