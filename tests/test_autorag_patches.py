@@ -32,3 +32,17 @@ def test_apply_patches_autorag_chroma():
     autorag_patches.apply()
     assert Chroma.is_exist is autorag_patches._is_exist
     assert Chroma.add_embedding is autorag_patches._add_embedding
+
+
+def test_fast_validation_matches_autorag():
+    """The set-based validator accepts and rejects exactly what AutoRAG's quadratic one does."""
+    import pandas as pd
+    from autorag.utils.preprocess import validate_qa_from_corpus_dataset as original
+
+    corpus = pd.DataFrame({"doc_id": [f"w{i}" for i in range(50)]})
+    good = pd.DataFrame({"retrieval_gt": [[["w1", "w2"]], [[]], [["w3"], ["w49"]]]})
+    bad = pd.DataFrame({"retrieval_gt": [[["w1", "w999"]], [["w3"]]]})
+    for fn in (original, autorag_patches._validate_qa_from_corpus_dataset):
+        fn(good, corpus)
+        with pytest.raises(AssertionError, match="1 doc_ids"):
+            fn(bad, corpus)

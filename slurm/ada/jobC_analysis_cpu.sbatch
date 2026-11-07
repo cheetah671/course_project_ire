@@ -7,6 +7,8 @@
 #SBATCH --time=06:00:00
 #SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job C (CPU only, after job B): routers + baselines + oracle, then tables and figures.
+# Each router run skips itself once its headline.csv exists, so a job stopped at 6 h resumes when resubmitted
+# (~3-4 h in all at 5,000 questions: measured on synthetic data at full scale, 7 Nov).
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobC_analysis_cpu.sbatch
 # MLP is first in the cut order: MODELS='lr gbdt' sbatch ... drops it.
 set -euo pipefail
@@ -19,12 +21,12 @@ step "collect + score the grid (no-op if job B already wrote it)"
 step "unit tests (incl. the Chroma-dependent ones)"
 py -m pytest -q tests || echo "WARNING: unit tests failed (see above)"
 step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + per task)"
-py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
+[ -s "$RESULTS_ROOT/router/headline.csv" ] || py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
 step "conservative Router B accounting (probe never reused)"
-py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
+[ -s "$RESULTS_ROOT/router_noreuse/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
 for W in tokens_only params_scaled api_price_like; do
   step "router sensitivity to cost weights: $W"
-  py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
+  [ -s "$RESULTS_ROOT/router_w-$W/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
 done
 step "tables"
 py -m ragroute.analysis.tables

@@ -65,13 +65,18 @@ Three tasks over one Wikipedia corpus, 1,000 sampled questions per dataset (5,00
 
 Questions are split 60/20/20 into train/dev/test per dataset, **grouped**: questions that share a gold Wikipedia
 article are always on the same side (union-find over shared gold titles and near-duplicate questions), so a
-router cannot memorise "questions about article X". [[Leakage report: residual test–train title overlap.]]
+router cannot memorise "questions about article X". Every dataset splits 600/200/200; no test question shares
+any gold title with a training question, and no question text appears in two splits (4,459 groups, the largest
+with 8 questions).
 
 ### 3.2 Corpus
 DPR's 100-word passages of the December 2018 English Wikipedia (21,015,324 passages; fixed chunking). AutoRAG's
 BM25 scores every passage in Python, so we search a 500,000-passage sub-corpus built from: each question's top-50
 passages from BM25 over all 21M passages (our own Lucene index), the first 10 passages of every gold article, and
-seeded random passages. [[T1: composition counts.]]
+seeded random passages: 226,275 mined, 14,792 from gold articles and 258,933 random. 3,361 of the 3,746 gold
+article titles were found in the 2018 dump. The share of questions whose gold passage is in the sub-corpus is
+98.6% (HotpotQA), 97.7% (FEVER), 84.1% (zsRE), 79.7% (TriviaQA) and 74.5% (NQ; for NQ and TriviaQA "gold" means a
+mined passage containing an answer string). The rest are kept, not dropped, to avoid selection bias.
 
 ### 3.3 The configuration grid
 | Choice | Options |
