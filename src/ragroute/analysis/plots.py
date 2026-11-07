@@ -9,6 +9,8 @@ F3 pareto_by_dataset    the same, one panel per dataset (small multiples)
 F4 oracle_winrate       share of queries where each config is oracle-best, per hops type (heatmap)
 F6 ablation_gap_closed  gap closed at iso-cost per feature set x model (mean +- seed sd)
 F7 importance           GBDT gain by feature group
+F8 weight_sensitivity   Kendall tau / frontier Jaccard over 500 random cost-weight draws (needs tables first)
+F9 amortisation         total cost per query vs queries per index build (needs T9)
 Usage: python -m ragroute.analysis.plots
 """
 from __future__ import annotations
@@ -167,6 +169,44 @@ def fig_importance(imp: dict, out: Path):
     _save(fig, out / "F7_importance")
 
 
+def fig_weight_sensitivity(draws: pd.DataFrame, out: Path):
+    """F8: over 500 random cost-weight draws, how stable is the static cost ranking and the cost-quality frontier."""
+    d = draws[draws["weights"].str.startswith("draw")]
+    if d.empty:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(7.6, 2.8))
+    for ax, col, xlabel in ((axes[0], "kendall_tau_cost_rank", "Kendall τ of config cost ranking vs default"),
+                            (axes[1], "frontier_jaccard", "Jaccard overlap of static frontier vs default")):
+        ax.hist(d[col].dropna(), bins=25, color=SERIES["router_A"], edgecolor=SURFACE)
+        ax.axvline(d[col].median(), color=INK, lw=1, ls="--")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("weight draws")
+    axes[0].set_title(f"Cost-weight sensitivity ({len(d)} draws, each weight x/÷ up to 4)", loc="left",
+                      fontsize=10, color=INK)
+    _save(fig, out / "F8_weight_sensitivity")
+
+
+def fig_amortisation(t9: pd.DataFrame, out: Path):
+    """F9: total cost per query (marginal + amortised offline) vs queries served per index build (log x)."""
+    if t9.empty:
+        return
+    t9 = t9.assign(family=np.where(t9["config_id"].str.startswith("bm25"), "BM25 configs", "dense / hybrid configs"))
+    fig, ax = plt.subplots(figsize=(6.4, 3.4))
+    for fam, col in (("BM25 configs", SERIES["router_B"]), ("dense / hybrid configs", SERIES["router_A"])):
+        g = t9[t9["family"] == fam]
+        for cid, gc in g.groupby("config_id"):
+            gc = gc.sort_values("queries_per_build")
+            ax.plot(gc["queries_per_build"], gc["total"], color=col, lw=1, alpha=0.55)
+        med = g.groupby("queries_per_build")["total"].median()
+        ax.plot(med.index, med.values, color=col, lw=2.4, label=f"{fam} (median)")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Queries served per index build (amortisation factor)")
+    ax.set_ylabel("Total cost per query\n(marginal + amortised offline)")
+    ax.legend(frameon=False, fontsize=8)
+    _save(fig, out / "F9_amortisation")
+
+
 def _save(fig, stem: Path):
     fig.tight_layout()
     fig.savefig(stem.with_suffix(".pdf"))
@@ -189,6 +229,11 @@ def main():
     fig_oracle_winrate(pd.read_parquet(res / "runs_scored.parquet"), out)
     fig_ablation(pd.read_csv(res / "router" / "headline.csv"), out)
     fig_importance(json.loads((res / "router" / "importance.json").read_text()), out)
+    tables = res / "tables"
+    if (tables / "T8_weight_sensitivity_draws.csv").exists():
+        fig_weight_sensitivity(pd.read_csv(tables / "T8_weight_sensitivity_draws.csv"), out)
+    if (tables / "T9_offline_vs_marginal.csv").exists():
+        fig_amortisation(pd.read_csv(tables / "T9_offline_vs_marginal.csv"), out)
     print(f"figures -> {out}")
 
 

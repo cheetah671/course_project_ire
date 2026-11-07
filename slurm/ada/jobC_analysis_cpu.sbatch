@@ -4,22 +4,28 @@
 #SBATCH -p u22
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
-#SBATCH --time=03:00:00
-#SBATCH -o /home2/cs4406.11/ragroute_run/logs/%x_%j.out
+#SBATCH --time=06:00:00
+#SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job C (CPU only, after job B): routers + baselines + oracle, then tables and figures.
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobC_analysis_cpu.sbatch
-# The MLP router is skipped here (first in the cut order); add it for the full run if time allows.
+# MLP is first in the cut order: MODELS='lr gbdt' sbatch ... drops it.
 set -euo pipefail
-source /home2/cs4406.11/ragroute_run/code/slurm/ada/env.sh
+source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env analysisC
 
 step "collect + score the grid (no-op if job B already wrote it)"
 [ -s "$RESULTS_ROOT/runs_scored.parquet" ] || py -m ragroute.harness.collect
-step "routers + baselines (LR, GBDT; all feature sets; 5 seeds)"
-py -m ragroute.router.train_eval --models lr gbdt
+step "unit tests (incl. the Chroma-dependent ones)"
+py -m pytest -q tests || echo "WARNING: unit tests failed (see above)"
+step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + per task)"
+py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
 step "conservative Router B accounting (probe never reused)"
-py -m ragroute.router.train_eval --models gbdt --feature-sets B --no-reuse
+py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
+for W in tokens_only params_scaled api_price_like; do
+  step "router sensitivity to cost weights: $W"
+  py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
+done
 step "tables"
 py -m ragroute.analysis.tables
 step "figures"

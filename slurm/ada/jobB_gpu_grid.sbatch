@@ -6,13 +6,13 @@
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
 #SBATCH --time=06:00:00
-#SBATCH -o /home2/cs4406.11/ragroute_run/logs/%x_%j.out
+#SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job B (1 GPU): AutoRAG retrieval trial (BM25 + Chroma ingest, bm25/dense/hybrid top-20), cross-encoder rerank,
 # router features, generation for both generators (backend from configs/experiment.yaml: llamacpp on GTX 1080 Ti),
 # then collect + score the grid. Each stage caches per unit, so resubmitting after the 6 h limit resumes.
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobB_gpu_grid.sbatch
 set -euo pipefail
-source /home2/cs4406.11/ragroute_run/code/slurm/ada/env.sh
+source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env gridB
 nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv

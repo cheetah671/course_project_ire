@@ -199,6 +199,11 @@ def stage_generate(cfg, gen_key: str, force=False, limit: int | None = None, onl
         _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache, subdir, project)
 
 
+def gen_dtype(cfg, gen_key: str) -> str:
+    """vLLM dtype for one generator: RAGROUTE_DTYPE (one-off checks) > models.generators.<g>.dtype > generation.dtype."""
+    return os.environ.get("RAGROUTE_DTYPE") or cfg["models"]["generators"][gen_key].get("dtype") or cfg["generation"]["dtype"]
+
+
 @contextlib.contextmanager
 def open_generator(cfg, gen_key: str, project: Path, cache: Path):
     """Yields an AutoRAG generator module for `gen_key` on the configured backend; loads the model once."""
@@ -208,11 +213,13 @@ def open_generator(cfg, gen_key: str, project: Path, cache: Path):
     if gen["backend"] == "vllm":
         from autorag.nodes.generator import Vllm
 
-        llm = Vllm(str(project), llm=g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+        llm = Vllm(str(project), llm=g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"],
+                   dtype=gen_dtype(cfg, gen_key),
                    max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"],
                    max_num_seqs=gen["max_num_seqs"],
                    max_num_batched_tokens=gen["max_num_batched_tokens"])
-        _log_timing(cache, {"stage": f"load_{gen_key}", "backend": "vllm", "seconds": time.time() - t_load})
+        _log_timing(cache, {"stage": f"load_{gen_key}", "backend": "vllm", "dtype": gen_dtype(cfg, gen_key),
+                            "seconds": time.time() - t_load})
         yield llm
     elif gen["backend"] == "llamacpp":
         from ragroute.harness.llamacpp import LlamaServer, ensure_gguf, make_generator
@@ -257,6 +264,7 @@ def _generate_configs(cfg, gen_key, todo, qa, llm, tok, cache: Path, subdir: str
         })
         out.to_parquet(cache / subdir / f"{c.config_id}.parquet", index=False)
         _log_timing(cache, {"stage": f"generate_{c.config_id}", "subdir": subdir, "backend": gen["backend"],
+                            "dtype": gen_dtype(cfg, gen_key) if gen["backend"] == "vllm" else "gguf-q8_0",
                             "seconds": secs, "n": len(out),
                             "input_tokens": int(out["input_tokens"].sum()), "output_tokens": int(out["output_tokens"].sum())})
         print(f"{c.config_id}: {len(out)} gens in {secs:.1f}s; in_tok={out['input_tokens'].sum()} out_tok={out['output_tokens'].sum()}")
@@ -284,7 +292,7 @@ def check_prompt_token_count(cfg, gen_key: str, n: int = 20):
     if gen["backend"] == "vllm":
         from vllm import LLM, SamplingParams
 
-        llm = LLM(g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+        llm = LLM(g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen_dtype(cfg, gen_key),
                   max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"],
                   max_num_seqs=gen["max_num_seqs"],
                   max_num_batched_tokens=gen["max_num_batched_tokens"])

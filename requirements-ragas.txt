@@ -1,8 +1,13 @@
 # Env "ragroute-ragas": LLM-judge metrics. Separate because RAGAS/LangChain pins conflict with AutoRAG's.
 # The code uses the legacy evaluate() API (ragas 0.2.x; still importable in 0.4.x with deprecation warnings).
 ragas==0.2.15               # VERIFY; if you move to 0.4.x re-run the 150-item validation
-langchain-openai
-langchain-huggingface
+# LangChain pinned to the 0.3 series: ragas 0.2.15 imports langchain_community.chat_models.vertexai, which
+# langchain-community 0.4 (LangChain 1.0, Oct 2025) removed (ModuleNotFoundError on Ada, 7 Nov 2026).
+langchain>=0.3,<0.4
+langchain-core>=0.3,<0.4
+langchain-community>=0.3,<0.4
+langchain-openai>=0.3,<0.4
+langchain-huggingface>=0.1,<0.4
 sentence-transformers
 pandas
 pyarrow

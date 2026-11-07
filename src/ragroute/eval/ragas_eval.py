@@ -26,12 +26,17 @@ import pandas as pd
 from ragroute.config import load_experiment
 
 
+# RAGAS judges a free-text answer against passages. FEVER answers are a bare SUPPORTS/REFUTES label, for which
+# faithfulness and answer relevancy are not meaningful, so verification is scored by accuracy only.
+JUDGE_TASKS = ("qa", "slot_filling")
+
+
 def build_items(cfg: dict, n_per_dataset: int) -> pd.DataFrame:
     """Test-split subsample: n queries per dataset x ALL 24 configs, so any router's choice is covered."""
     res = Path(cfg["paths"]["results_dir"])
     runs = pd.read_parquet(res / "runs_scored.parquet")
     qa = pd.read_parquet(Path(cfg["paths"]["project_dir"]) / "data" / "qa.parquet")[["qid", "query", "generation_gt"]]
-    test = runs[runs["split"] == "test"]
+    test = runs[(runs["split"] == "test") & runs["task"].isin(JUDGE_TASKS)]
     rng = np.random.default_rng(cfg["seed"])
     qids = []
     for ds, g in test.drop_duplicates("qid").groupby("dataset"):

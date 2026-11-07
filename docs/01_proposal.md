@@ -43,6 +43,10 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
   3. Routers from question-only features and from cheap post-retrieval signals, with the signal cost
      charged to the router, compared with static, per-dataset and Adaptive-RAG-style baselines.
   4. A countable cost model (offline vs marginal, amortisation, weight sensitivity).
+- Positioning after the 7 Nov literature check (docs/11): per-query configuration routing with a cost-penalised
+  predictor already exists (BRANE, 2026), and RCT-MARS (2026) reports a "routing paradox" (large oracle headroom
+  that learned routers do not recover). Our contribution is therefore an end-to-end, cost-counted test of that
+  paradox across three tasks, comparing pre- and post-retrieval (QPP-style) signals at their real cost.
 
 ## 2. Related work (positioning; we claim no novelty over these)
 
@@ -56,9 +60,15 @@ and identifies [[where, e.g. multi-hop bridge questions]] as the only region whe
 | METIS (Ray, Pan, Gu, Du, Feng, Ananthanarayanan, Netravali, Jiang; SOSP 2025; arXiv:2412.10543, first posted as "RAGServe") ✔ | Serving system that jointly schedules queries and adapts per-query RAG configuration (e.g. number of retrieved chunks, synthesis method); reports 1.64–2.54× lower generation latency without quality loss | Discussed conceptually: it optimises serving latency under load; we do not reproduce a serving system (§5.4). |
 | RAGAS (Es, James, Espinosa-Anke, Schockaert; EACL 2024 System Demonstrations, 2024.eacl-demo.16, pp. 150–158) ✔ | LLM-judge metrics (faithfulness, answer relevancy) | Secondary metric only, after human validation. |
 | LegalBench-RAG (Pipitone, Houir Alami; arXiv:2408.10343, 2024; no venue listed) ✔ and other domain RAG benchmarks | Domain-specific retrieval benchmarks | Out of scope; listed as future work for domain transfer. |
-| Chunking-vs-cost studies | [[TODO: find via reference lists of the first four papers; do not cite unread]] | We fix chunking (§design D3). |
+| **BRANE** (Pan, Arabzadeh, Jacob, Kazhamiaka, Choukse, Zaharia; "Natural Language Query to Configuration for Retrieval Agents", arXiv:2605.27361, 2026) ✔ abstract read | Per-query choice of a whole retrieval-pipeline configuration from a catalogue; an LLM extracts query characteristics, per-configuration correctness predictors, argmax of predicted correctness minus a cost penalty; matches the best fixed configuration at up to 89% lower cost | **Closest prior work: the routing formulation is theirs, not ours.** We differ in cheap features (no LLM call per query), post-retrieval (QPP-style) signals, three tasks with different metrics and global vs per-task routers, countable marginal cost with router overhead charged, leakage-controlled splits, and an explicit test of whether routers beat the best static config at all. |
+| RCT-MARS (Srivastava; J. Intelligent Information Systems, 2026) ✔ abstract read | Names the "routing paradox": the per-query oracle beats every fixed retrieval paradigm, yet learned hard routers fall below the best fixed one; soft fusion recovers part of the gap | Our study tests the paradox end to end (retrieval, rerank, generator) with cost counted. A null result is a replication of the paradox. |
+| Arabzadeh, Drozdov, Bendersky, Zaharia, "Can QPP Choose the Right Query Variant?", SIGIR 2026 ✔ abstract read; classic QPP: Cronen-Townsend et al. SIGIR 2002 (Clarity), Zhou & Croft SIGIR 2007 (WIG), Shtok et al. ACM TOIS 2012 (NQC) | Query performance prediction for choosing among RAG query variants; cheap pre-retrieval predictors often match post-retrieval ones | Router B's probe signals are post-retrieval QPP predictors (score gaps, spread, agreement). Router A vs B is pre- vs post-retrieval QPP for configuration choice. |
+| RAGRouter-Bench (Wang et al., arXiv:2602.00296, 2026); RAGRouter (Zhang et al., NeurIPS 2025, arXiv:2505.23052); Su et al., "Fast or Better?" (arXiv:2502.12145, 2025) ✔ abstracts read | Routing between RAG paradigms (query + corpus features); routing among retrieval-augmented LLMs (documents change which LLM is best); a user-set accuracy/cost knob over retrieval strategies | Same family of per-query routing. We route among configurations of one paradigm, include the generator in the choice, and charge the router's own cost. |
+| Static multi-objective tuners: Barker et al., "Faster, Cheaper, Better" (arXiv:2502.18635, 2025); HAMMER (Zhou, Wang, Fang; Proc. ACM Manag. Data, 2026) ✔ abstracts read | Bayesian multi-objective and MCTS tuning of whole RAG pipelines (cost, latency, quality); optimal configs do not transfer across tasks | One configuration per workload; motivates our per-task routers. |
+| Chunking vs cost: Śmigielski et al., Procedia Computer Science (2026); Galimzyanov et al., "Practical Code RAG at Scale" (arXiv:2510.20609, 2025) ✔ abstracts read | Chunking methods compared with computational cost; retrieval design under compute budgets (code) | Chunking is fixed in our design (D3); background only. |
 
-**TODO (open item 6):** pull the reference lists of the first four papers and check "cited by" for each.
+Reference and citation check (open item 6): done on 7 Nov 2026 with OpenAlex over 909 papers citing Wang et al.,
+AutoRAG, AutoRAG-HP, Orbach et al., Adaptive-RAG and METIS. Method and screening: docs/11_literature_update.md.
 
 ## 3. Research questions and hypotheses
 - **RQ1 (ceiling).** How much better is the per-query oracle than the best static config, at equal
@@ -80,7 +90,7 @@ value comes from dataset identity alone (tested by the per-dataset static baseli
 4.1 Data: three tasks over one Wikipedia index: open-domain QA (NQ-open, HotpotQA, TriviaQA), fact
 verification (FEVER, KILT) and slot filling (zsRE, KILT); ~1,000 queries each, grouped train/dev/test split by
 query with leakage checks.
-4.2 Corpus and chunking: DPR 100-word Wikipedia passages (fixed chunking); ~1M-passage sub-corpus
+4.2 Corpus and chunking: DPR 100-word Wikipedia passages (fixed chunking); 500k-passage sub-corpus
 with full-corpus BM25 hard negatives.
 4.3 Grid: {BM25, dense bge-base, hybrid RRF k=60} × k∈{3,10} × reranker {off, MiniLM-L6 cross-encoder
 on a fixed pool of 20} × {Qwen2.5-7B, Qwen2.5-1.5B}, greedy decoding = 24 configs.
@@ -184,6 +194,42 @@ Datasets, models, methods and tools. Checked on 2026-10-28 against the ACL Antho
     (Anthology W04-3250; no DOI.)
 25. ✔ Taylor Berg-Kirkpatrick, David Burkett, Dan Klein. An Empirical Investigation of Statistical Significance in NLP.
     EMNLP-CoNLL 2012, pp. 995–1005. (Anthology D12-1091; no DOI.)
+Added 7 Nov 2026 from the citation check (docs/11). Abstracts read; metadata from arXiv or the DOI record (OpenAlex):
+26. ✔ Melissa Z. Pan, Negar Arabzadeh, Mathew Jacob, Fiodar Kazhamiaka, Esha Choukse, Matei Zaharia. Natural Language
+    Query to Configuration for Retrieval Agents (BRANE). arXiv:2605.27361, 2026.
+27. ✔ Ankit Srivastava. RCT-MARS: When Per-Query Retrieval Routing Fails, and What It Takes to Succeed. Journal of
+    Intelligent Information Systems, 2026. doi:10.1007/s10844-026-01080-5.
+28. ✔ Negar Arabzadeh, Andrew Drozdov, Michael Bendersky, Matei Zaharia. Can QPP Choose the Right Query Variant?
+    Evaluating Query Variant Selection for RAG Pipelines. SIGIR 2026. doi:10.1145/3805712.3808571.
+29. ✔ Steve Cronen-Townsend, Yun Zhou, W. Bruce Croft. Predicting Query Performance. SIGIR 2002, pp. 299–306.
+    doi:10.1145/564376.564429.
+30. ✔ Yun Zhou, W. Bruce Croft. Query Performance Prediction in Web Search Environments. SIGIR 2007, pp. 543–550.
+    doi:10.1145/1277741.1277835.
+31. ✔ Anna Shtok, Oren Kurland, David Carmel, Fiana Raiber, Gad Markovits. Predicting Query Performance by Query-Drift
+    Estimation. ACM TOIS 30(2):1–35, 2012. doi:10.1145/2180868.2180873.
+32. ✔ Ziqi Wang, Xi Zhu, Shuhang Lin, Haochen Xue, Minghao Guo, Yongfeng Zhang. RAGRouter-Bench: A Dataset and Benchmark
+    for Adaptive RAG Routing. arXiv:2602.00296, 2026.
+33. ✔ Jiarui Zhang, Xiangyu Liu, Yong Hu, Chaoyue Niu, Fan Wu, Guihai Chen. RAGRouter: Learning to Route Queries to
+    Multiple Retrieval-Augmented Language Models. NeurIPS 2025. arXiv:2505.23052.
+34. ✔ Jinyan Su, Jennifer Healey, Preslav Nakov, Claire Cardie. Fast or Better? Balancing Accuracy and Cost in
+    Retrieval-Augmented Generation with Flexible User Control. arXiv:2502.12145, 2025.
+35. ✔ Pin Qian, Su Wang, Chong Peng, Junxian You, Lifei Liu, Haoran Yu, Yihang Chen, Xiaochong Jiang. When Should Active
+    RAG Retrieve? A Budget-Aware Evaluation of Utility, Calibration, and Cost. KDD 2026 Workshop on Evaluation and
+    Trustworthiness of Agentic AI. arXiv:2607.24010.
+36. ✔ Matthew Barker, Andrew Bell, Evan Thomas, James Carr, Thomas Andrews, Umang Bhatt. Faster, Cheaper, Better:
+    Multi-Objective Hyperparameter Optimization for LLM and RAG Systems. arXiv:2502.18635, 2025.
+37. ✔ Y. K. Zhou, Zixuan Wang, Yixiang Fang. HAMMER: An Automatic RAG Tuning System via Hierarchical Memory-Guided
+    Monte Carlo Tree Search. Proceedings of the ACM on Management of Data, 2026. doi:10.1145/3802071.
+38. ✔ Clovis Varangot-Reille, Christophe Bouvard, Mathieu Ciancone, Antoine Gourru, Marion Schaeffer, François Jacquenet
+    (et al.). Doing More with Less: A Survey on Routing Strategies for Resource Optimisation in Large Language
+    Model-Based Systems. JAIR, 2026. doi:10.1613/jair.1.19801.
+39. ✔ Mateusz Śmigielski, Michał Rajkowski, Mateusz Zbrocki, Michał Bernacki-Janson, Karol Kunicki, Julianna
+    Godziszewska (et al.). Chunking Methods on Retrieval-Augmented Generation – Effectiveness Evaluation Against
+    Computational Cost and Limitations. Procedia Computer Science, 2026. doi:10.1016/j.procs.2026.10.097.
+40. ✔ Timur Galimzyanov, Olga Kolomyttseva, Egor Bogomolov. Practical Code RAG at Scale: Task-Aware Retrieval Design
+    Choices under Compute Budgets. arXiv:2510.20609, 2025.
+41. ✔ Meta Llama Team (Aaron Grattafiori et al.). The Llama 3 Herd of Models. arXiv:2407.21783, 2024. (Judge model:
+    Llama-3.1-8B-Instruct, 4-bit AWQ checkpoint `hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4`.)
 Software (cite by URL and the exact version we ran; versions from the Ada job logs `env_gridB_43945*.txt`):
 AutoRAG 0.3.27 (paper = ref. 2); llama.cpp, github.com/ggml-org/llama.cpp, release b11936 (commit 27b7a8a);
 Qwen2.5-1.5B/7B-Instruct Q8_0 GGUF weights (Hugging Face, Qwen); chromadb 1.5.9; rank-bm25 0.2.2;

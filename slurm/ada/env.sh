@@ -1,6 +1,6 @@
 #!/bin/bash
 # Source in every Ada job (and interactive shell) for this project:  source ~/ragroute_run/code/slurm/ada/env.sh
-# Account cs4406.11 limits (QoS cs4406): 1 GPU, 10 CPUs, 1 running + 1 submitted job, 6 h wall time.
+# Account limits (cs4406.07 / cs4406.11, same QoS) (QoS cs4406): 1 GPU, 10 CPUs, 1 running + 1 submitted job, 6 h wall time.
 export MAMBA_ROOT_PREFIX=$HOME/micromamba
 export MM=$HOME/.local/bin/micromamba
 export RUN=$HOME/ragroute_run
@@ -35,8 +35,9 @@ export LLAMA_LIB_PATH=$MAMBA_ROOT_PREFIX/envs/llamacpp_build/lib
 export TOKENIZERS_PARALLELISM=false PYTHONHASHSEED=0
 mkdir -p "$DATA_ROOT" "$RESULTS_ROOT" "$RUN/logs" "$NODE_SCRATCH/raw" "$HF_HOME" "$PYSERINI_CACHE" 2>/dev/null || true
 
-# RAGROUTE_ENV=ragroute-vllm selects the vLLM env (2080 Ti nodes); default is the pilot's llama.cpp-era env
-py ()     { "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python "$@"; }
+# Full run: vLLM env on the RTX 2080 Ti nodes (default). The pilot used RAGROUTE_ENV=ragroute RAGROUTE_BACKEND=llamacpp.
+export RAGROUTE_ENV=${RAGROUTE_ENV:-ragroute-vllm} RAGROUTE_BACKEND=${RAGROUTE_BACKEND:-vllm}
+py ()     { "$MM" run -n "$RAGROUTE_ENV" python "$@"; }
 # Pyserini 1.6 builds an OpenAI client at import time and fails without a key; a dummy key is never used.
 pymine () { OPENAI_API_KEY=${OPENAI_API_KEY:-not-used} "$MM" run -n ragroute-mining python "$@"; }
 step ()   { echo; echo "== $(date -Is) $*"; }
@@ -52,8 +53,8 @@ log_env () {  # reproducibility record per job; never allowed to fail the job
   {
     echo "job=${SLURM_JOB_ID:-none} host=$(hostname) date=$(date -Is) pilot=${RAGROUTE_PILOT:-0}"
     nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv 2>/dev/null || echo "no GPU"
-    "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python -c "import importlib.metadata as m, torch; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), 'cuda_ok', torch.cuda.is_available(), '| autorag', m.version('autorag'), '| pandas', m.version('pandas'))" 2>&1 | tail -1
+    "$MM" run -n "$RAGROUTE_ENV" python -c "import importlib.metadata as m, torch; print('torch', torch.__version__, 'archs', torch._C._cuda_getArchFlags(), 'cuda_ok', torch.cuda.is_available(), '| autorag', m.version('autorag'), '| pandas', m.version('pandas'))" 2>&1 | tail -1
   } > "$f" 2>&1 || true
-  "$MM" run -n "${RAGROUTE_ENV:-ragroute}" python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null || true
+  "$MM" run -n "$RAGROUTE_ENV" python -m pip freeze > "${f%.txt}_pip.txt" 2>/dev/null || true
   echo "env logged to $f"
 }

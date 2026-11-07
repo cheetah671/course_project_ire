@@ -1,3 +1,33 @@
+# Progress report
+
+## Update, Sat 7 Nov 2026: full run started on account cs4406.07
+The full run moved to a fresh Ada account (cs4406.07). The pilot's account (cs4406.11) is not readable from it,
+so the environments and data were rebuilt from the repo scripts (docs/04, top section, has the exact sequence).
+
+**Changes made today (all recorded in docs):**
+| Change | Why | Where |
+|---|---|---|
+| Scripts use `$HOME` and `/home2/%u` instead of `/home2/cs4406.11` | run from any account | `slurm/ada/*` |
+| One-shot account bootstrap; RAGAS env with LangChain pinned < 0.4 | fresh account; ragas 0.2.15 breaks on LangChain 1.0 | `bootstrap_account.sh`, `setup_ragas_env.sh`, `requirements-ragas.txt` |
+| Sub-corpus 500k passages, BM25 mining depth 50 (was 1M, 100) | AutoRAG's BM25 is slow and its trial cannot resume under the 6 h limit; 25 GB quota | docs/02 D2, `configs/experiment.yaml` |
+| Our own Lucene BM25 index built from the DPR TSV | the prebuilt index downloaded at 0.2 MB/s (~12 h) | `ragroute.data.dpr_to_jsonl`, job A, D2 |
+| Engine = vLLM 0.11.2; per-generator precision; fp16-vs-fp32 check in job B1 | settles the open fp16 question before generation | docs/02 D10, `run_stages.gen_dtype` |
+| Job B split into B1 (retrieval, rerank, features, precision check) and B2 (generation, resumable) | decide precision before generating | `jobB1_*`, `jobB2_*` |
+| Judge = Llama-3.1-8B-Instruct (4-bit AWQ); RAGAS on QA + zsRE only; job J | not Qwen; FEVER answers are bare labels | docs/02 D15, docs/05, `jobJ_judge_gpu.sbatch` |
+| Bug fix: "NOT SUPPORTED" was parsed as SUPPORTS for FEVER | wrong verdicts | `eval/metrics.py`, test added |
+| New tables/figures: T1, T3c/T4c (chance-corrected FEVER), T8b (router under other cost weights), F8, F9 | missing from the plan | `analysis/tables.py`, `analysis/plots.py`, `router/train_eval.py --weight-set` |
+| Router seeds trained in parallel threads; outputs sorted | job C would not fit 6 h serially | `router/train_eval.py` |
+| Literature: citation check over 909 papers; BRANE and RCT-MARS added; QPP framing for Router B | TA's request (open item 6) | docs/11, docs/01 §2 and refs 26–41 |
+
+**Important for the report:** BRANE (arXiv:2605.27361, May 2026) already proposes the same cost-penalised
+per-query configuration router, and RCT-MARS (JIIS 2026) names the "routing paradox" our pilot showed. Our
+contribution is now framed as an end-to-end, cost-counted test of that paradox across three tasks.
+
+**Only the team can do:** label the 150 judge-validation items (docs/05 §5), confirm with the professor that three
+tasks and our normalisation are what was meant, and read the final report before submission.
+
+---
+
 # Progress report (as of Wed 28 Oct 2026)
 
 **Project:** Which RAG Configuration for Which Query? Cost-Aware Per-Query Configuration Routing (IRE)

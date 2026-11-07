@@ -30,7 +30,8 @@ fi
 step "vLLM 0.11 + AutoRAG"
 "$UV" pip install --python "$PY" --no-cache "vllm${VLLM_SPEC:-~=0.11.0}" "autorag==0.3.27" \
      "sentence-transformers>=4.1.0" "llama-index-embeddings-huggingface>=0.5.4" "sentencepiece>=0.2.0" \
-     "pandas>=2.2.3,<3" "datasets>=3.5.1" "pyarrow>=23.0.1" "pytest>=8" pip
+     "pandas>=2.2.3,<3" "datasets>=3.5.1" "pyarrow>=23.0.1" "pytest>=8" pip \
+     "lightgbm>=4.3" "matplotlib>=3.8" "scikit-learn>=1.5" "scipy>=1.13"
 "$UV" pip install --python "$PY" --no-cache --no-deps -e "$CODE"
 
 step "checks"

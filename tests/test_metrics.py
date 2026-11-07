@@ -32,6 +32,8 @@ def test_verdict_parsing():
     assert parse_verdict("Not enough info") == "INVALID"
     assert parse_verdict("SUPPORTS or REFUTES") == "INVALID"
     assert parse_verdict("True, the claim holds") == "SUPPORTS"
+    assert parse_verdict("Not supported") == "REFUTES"          # negated stem is a refutation
+    assert parse_verdict("The evidence does not support it") == "REFUTES"
 
 
 def test_score_row_quality_in_unit_interval():

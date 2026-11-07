@@ -5,7 +5,11 @@ agrees with humans on our data. The same labels also measure how strict EM is.
 
 ## 1. Items
 - 150 items from the **dev** split (test stays untouched by human inspection), produced by
-  `python -m ragroute.eval.judge_validation sample`.
+  `python -m ragroute.eval.judge_validation sample` (Ada job J does this).
+- **QA (NQ, HotpotQA, TriviaQA) and zsRE only.** FEVER is left out: its answer is a bare SUPPORTS/REFUTES
+  label, which RAGAS cannot judge for faithfulness or relevance, and FEVER is scored by accuracy anyway.
+- zsRE items show the input as `subject | relation` (e.g. "USA-88 | time of spacecraft launch"); the system
+  answer should be the missing value ("3 February 1993").
 - Stratified by dataset × (EM correct / incorrect) × (k = 3 / 10), one config per query within a
   stratum, so easy and hard, short and long contexts all appear.
 - Output: `annotation/judge_validation_to_annotate.csv` (template with the same columns:
@@ -32,7 +36,7 @@ a misleading passage). A correct answer that no passage supports is 0 (from para
 ### relevance_label: does the answer address the question asked?
 2 = directly answers the question type asked (a person for "who", a date for "when"); 1 = related but
 off-target, hedged, or over-long; 0 = irrelevant, empty, or a refusal.
-For FEVER: 2 = a valid verdict (SUPPORTS/REFUTES); 0 = anything else.
+For zsRE: 2 = a value of the type the relation asks for (a date for "time of …", a place for "place of birth").
 
 ### correct_label: is the answer correct with respect to the gold answers?
 1 = matches a gold answer or is an unambiguous equivalent (alias, different but correct formatting
@@ -53,7 +57,18 @@ Free text. Use these tags where they apply: `gold_issue`, `ambiguous_question`, 
 - Report both judge–human and human–human agreement: if humans agree at κ = 0.7 and the judge at
   0.65, the judge is near the ceiling of what the labels support.
 
-## 5. Spreadsheet template
+## 5. Step by step for the team
+1. Open `annotation/judge_validation_to_annotate.csv` (copied into the repo after job J). Make two copies:
+   `annotation/ann_A.csv` (annotator A) and `annotation/ann_B.csv` (annotator B).
+2. Each annotator fills `faithfulness_label`, `relevance_label`, `correct_label`, `notes`, `annotator_id` in their
+   own copy, alone. Keep every row and the `item_id` column unchanged.
+3. The third person compares the two faithfulness columns and, where they differ, writes the final label in
+   `adjudicated_faithfulness` of **ann_A.csv**.
+4. Run (on Ada, in ~/ragroute_run/code, after `source slurm/ada/env.sh`):
+   `py -m ragroute.eval.judge_validation score --ann annotation/ann_A.csv annotation/ann_B.csv --judge $RESULTS_ROOT/judge_validation_ragas.parquet`
+   This writes `judge_validation_report.json` (table T11) and says whether RAGAS passes the rule below.
+
+## 6. Spreadsheet template
 `annotation/judge_validation_template.csv` columns:
 `item_id, dataset, question_or_claim, gold_answers, passages, system_answer, faithfulness_label,
 relevance_label, correct_label, notes, annotator_id, adjudicated_faithfulness`.

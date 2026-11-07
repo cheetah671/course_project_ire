@@ -24,8 +24,11 @@ corpus:
   # Verified 2026-10-27: URL live (4,694,541,059 bytes gz); 21,015,324 passages. Still record a checksum.
   tsv_url: https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
   tsv_path: ${DPR_TSV:-data/raw/psgs_w100.tsv}   # .tsv or .tsv.gz (pandas reads gzip directly)
-  subcorpus_size: 1000000        # target passages in the AutoRAG corpus (pilot with 100000)
-  bm25_mining_depth: 100         # BM25 (Pyserini, full corpus) candidates per query kept in the subcorpus
+  subcorpus_size: 500000         # target passages in the AutoRAG corpus (pilot: 100000). Was 1M; cut to 500k on
+                                 # 7 Nov: AutoRAG's BM25 (rank_bm25) scores every passage in Python per query term and
+                                 # the retrieval trial is not resumable, so 1M risked the 6 h job limit; Chroma for 1M
+                                 # would also take ~8 GB of the 25 GB home quota. See D2.
+  bm25_mining_depth: 50          # BM25 (Pyserini, full corpus) candidates per query kept in the subcorpus (> pool 20)
   dense_mining_depth: 100        # bge dense candidates per query (only if dense mining is enabled)
   dense_mining: false            # true = embed full 21M corpus once to mine dense negatives (~+10 GPU-h, see docs)
   article_neighbours: 10         # extra passages kept from each gold-title article
@@ -122,7 +125,7 @@ generation:
   # Serving engine. vllm needs compute capability >= 7.5 (RTX 2080 Ti+). The pilot ran llamacpp on a GTX 1080 Ti
   # (sm_61): llama.cpp's OpenAI-compatible server + AutoRAG's openai_llm module. The TA confirmed 2080 Ti nodes
   # (gnode042 onwards, u22), so jobs on those nodes set RAGROUTE_BACKEND=vllm (env ragroute-vllm).
-  backend: ${RAGROUTE_BACKEND:-llamacpp}   # llamacpp | vllm
+  backend: ${RAGROUTE_BACKEND:-vllm}       # vllm (full run, RTX 2080 Ti) | llamacpp (pilot, GTX 1080 Ti)
   llamacpp:
     server_bin: ${LLAMA_SERVER_BIN:-llama-server}   # built by slurm/ada/build_llamacpp.sh
     lib_path: ${LLAMA_LIB_PATH:-}    # CUDA runtime libs for llama-server only (set by slurm/ada/env.sh)
@@ -163,7 +166,10 @@ prompts:
       content: "Passages:\n{retrieved_contents}\n\nInput: {query}\nValue:"
 
 judge:
-  model: VERIFY_choose_after_validation   # must NOT be a Qwen model (self-preference bias)
+  # Not Qwen (self-preference bias with Qwen generators); ungated; 4-bit AWQ fits one 11 GB RTX 2080 Ti next to its
+  # KV cache (same quantisation route as the 7B generator). Chosen 7 Nov 2026; validated on the 150 hand-labelled items.
+  model: hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4
   base_url: http://localhost:8001/v1
-  ragas_queries_per_dataset: 100          # from the test split; all 24 configs judged on these
+  max_model_len: 8192                     # RAGAS faithfulness prompts carry up to k=10 passages plus few-shot examples
+  ragas_queries_per_dataset: 50           # test split, QA + zsRE only (FEVER answers are labels); x 24 configs
   ragas_version: "0.2.15"                 # VERIFY; 0.4.x still accepts this API with deprecation warnings

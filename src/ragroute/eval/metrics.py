@@ -81,7 +81,9 @@ _LABELS = ("SUPPORTS", "REFUTES")
 def parse_verdict(pred: str) -> str:
     """Map free text to SUPPORTS/REFUTES; returns 'INVALID' when neither or both appear."""
     up = pred.upper()
-    hits = [lab for lab in _LABELS if lab in up or lab[:-1] in up]  # SUPPORT/REFUTE stems
+    if re.search(r"\b(NOT|NO|DOES NOT|DOESN'T|ISN'T) SUPPORT", up):  # "NOT SUPPORTED" is a refutation, not a SUPPORT stem
+        return "REFUTES"
+    hits = [lab for lab in _LABELS if lab[:-1] in up]  # SUPPORT/REFUTE stems (also match SUPPORTS/REFUTES)
     if len(hits) == 1:
         return hits[0]
     first = re.match(r"\s*([A-Z]+)", up)

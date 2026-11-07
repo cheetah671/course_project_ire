@@ -24,9 +24,19 @@ Values live in `configs/experiment.yaml`; this document explains them.
   (`corpus_stats.json` reports the mapping rate) and some answers may have changed. Affects all configs
   equally; reported as a limitation.
 
-### D2. A ~1M-passage sub-corpus instead of all 21M passages
-- **Decision.** Sub-corpus = full-corpus BM25 top-100 per query (Pyserini prebuilt index) ∪ the first
-  10 passages of every gold title ∪ seeded random passages up to 1,000,000 (pilot: 100,000).
+### D2. A 500k-passage sub-corpus instead of all 21M passages
+- **Decision.** Sub-corpus = full-corpus BM25 top-50 per query (Pyserini prebuilt index) ∪ the first
+  10 passages of every gold title ∪ seeded random passages up to 500,000 (pilot: top-100, 100,000).
+- **Change on 7 Nov 2026 (was top-100 and 1,000,000).** AutoRAG's BM25 (`rank_bm25.BM25Okapi.get_scores`)
+  loops in Python over every passage for every query term, the retrieval trial cannot resume mid-way, and Ada
+  jobs stop at 6 h; at 1M passages and 5,000 queries the trial was estimated at 4–5 h on its own. A 1M-vector
+  Chroma index would also take ~8 GB of the 25 GB home quota (two envs already use 10 GB). 500k is 5× the pilot;
+  mining depth 50 still keeps every passage that full-Wikipedia BM25 ranks in a query's top 50, well beyond the
+  pool of 20 the grid reads, and leaves room for random fill.
+- **Mining index (7 Nov 2026).** The full run builds its own Lucene BM25 index over the 21,015,324 DPR passages
+  (Pyserini `JsonCollection`, default analyser and BM25 k1 = 0.9, b = 0.4; `ragroute.data.dpr_to_jsonl`) instead of
+  downloading the prebuilt `wikipedia-dpr-100w` index, which arrived at ~0.2 MB/s on Ada (~12 h for 9.2 GB). Indexed
+  text is `title + "\n" + text`, the same string as the AutoRAG corpus. The pilot used the prebuilt index.
   Optional: full-corpus dense top-100 mined with the same bge model (`dense_mining: true`).
 - **Alternatives.** (a) Full 21M inside AutoRAG. (b) Full 21M outside AutoRAG (Pyserini + FAISS).
   (c) Gold + random only.
@@ -159,6 +169,12 @@ task. Dropping it is one flag (`datasets.zsre.enabled`) if the professor confirm
 - **Risk.** fp16 on Turing (no bf16) could cause numerical problems for some models (VERIFY in the
   pilot: look for empty or garbage outputs). vLLM greedy output can still vary slightly with batch
   composition: measured in week 1 (`greedy_reproducibility.json`).
+- **Engine decision (7 Nov 2026): vLLM 0.11.2 on RTX 2080 Ti for the full run.** The smoke test (28 Oct) showed
+  3.3–4.7× the pilot's llama.cpp speed and 100% identical reruns. llama.cpp is kept only to reproduce the pilot.
+  The 7B model runs as the official 4-bit AWQ checkpoint (fp16 7B does not fit 11 GB): its quality is reported
+  as "Qwen2.5-7B-Instruct-AWQ", not as the fp16 model. The open fp16 question for the 1.5B model (full-sentence
+  answers under vLLM) is settled by job B1 before any grid generation: the same config on 1,000 questions in
+  fp16 and fp32 (`dtype_check_qwen1p5b.json`); `models.generators.qwen1p5b.dtype` is then set from it.
 
 ### D11. Prompt and answer extraction
 QA: system "Answer with a short phrase only"; user "Passages … Question … Short answer:". FEVER:
@@ -235,6 +251,11 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
   Cohen's κ (judge binarised at 0.5) with bootstrap CIs, plus inter-annotator κ.
 - **Pre-registered rule:** use RAGAS at scale only if κ ≥ 0.6 (team to confirm) and the Spearman CI
   lower bound > 0.4; otherwise report it only as an unreliable diagnostic.
+- **Judge chosen 7 Nov 2026:** `hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4` served by vLLM on one RTX
+  2080 Ti (job J). Not Qwen; ungated; the strongest instruct model that fits 11 GB with room for 8k-token prompts.
+  RAGAS runs on QA and zsRE items only: a FEVER answer is a bare SUPPORTS/REFUTES label, for which faithfulness
+  and relevancy are undefined (FEVER is scored by accuracy alone). Test subsample: 50 questions per dataset × 24
+  configs (4 datasets → 4,800 items).
 - Short-answer caveat: with one-phrase answers, faithfulness reduces to one entailment check and
   relevancy is near-saturated. Judge noise can exceed differences between configs. That is why RAGAS
   never drives routing.

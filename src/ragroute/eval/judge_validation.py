@@ -1,7 +1,8 @@
 """150-item judge validation: sample items for annotation, then score judge-vs-human agreement.
 
   sample : stratified sample from the DEV split (test stays untouched by humans) -> annotation CSV + parquet
-           strata: dataset x (EM correct / incorrect) x (k=3 / k=10), so both easy and hard cases appear
+           strata: dataset x (EM correct / incorrect) x (k=3 / k=10), so both easy and hard cases appear.
+           QA and zsRE only (JUDGE_TASKS): a FEVER answer is a bare label, which RAGAS cannot judge.
   score  : reads 2 annotators' CSVs + judge scores (ragas_eval.py --items ...) and reports
            inter-annotator Cohen's kappa, judge-vs-human Spearman/Pearson, judge-vs-human Cohen's kappa
            (judge binarised at 0.5; human binary = label 2 'fully supported'), all with 95% bootstrap CIs.
@@ -29,16 +30,18 @@ from sklearn.metrics import cohen_kappa_score
 from ragroute.config import REPO_ROOT, load_experiment
 
 N_ITEMS = 150
+KAPPA_MIN = 0.6              # pre-registered (docs/05 §4)
+SPEARMAN_CI_LOW_MIN = 0.4
 ANN_COLS = ["faithfulness_label", "relevance_label", "correct_label", "notes", "annotator_id",
             "adjudicated_faithfulness"]
 
 
 def sample(cfg: dict) -> pd.DataFrame:
-    from ragroute.eval.ragas_eval import build_items  # reuse context assembly
+    from ragroute.eval.ragas_eval import JUDGE_TASKS
 
     res = Path(cfg["paths"]["results_dir"])
     runs = pd.read_parquet(res / "runs_scored.parquet")
-    dev = runs[runs["split"] == "dev"].assign(k=lambda d: d["config_id"].str.extract(r"-k(\d+)-")[0])
+    dev = runs[(runs["split"] == "dev") & runs["task"].isin(JUDGE_TASKS)].assign(k=lambda d: d["config_id"].str.extract(r"-k(\d+)-")[0])
     dev["stratum"] = dev["dataset"] + "|em" + dev["em"].astype(int).astype(str) + "|k" + dev["k"]
     rng = np.random.default_rng(cfg["seed"] + 150)
     strata = sorted(dev["stratum"].unique())
@@ -116,6 +119,10 @@ def score(ann_paths: list[str], judge_path: str, items_path: str) -> dict:
     rep["em_vs_human_correct_kappa"] = float(cohen_kappa_score(m["em"].astype(int), hc))
     rep["em_false_negative_rate"] = float(((m["em"] == 0) & (hc == 1)).sum() / max((hc == 1).sum(), 1))
     rep["f1_vs_human_correct_spearman"] = float(spearmanr(m["f1"], hc).statistic)
+    # pre-registered rule (docs/05 §4): kappa point estimate >= 0.6 AND Spearman 95% CI lower bound > 0.4
+    rep["ragas_passes_rule"] = bool(rep["kappa_faithfulness_binary"][0] >= KAPPA_MIN
+                                    and rep["spearman_faithfulness"][1] > SPEARMAN_CI_LOW_MIN)
+    rep["rule"] = f"kappa >= {KAPPA_MIN} and Spearman CI low > {SPEARMAN_CI_LOW_MIN}"
     return rep
 
 

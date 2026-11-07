@@ -1,5 +1,6 @@
 """Report tables (written as CSV + LaTeX into {results}/tables/). Numbers come only from result files.
 
+T1 datasets_corpus      per dataset: task, metric, sampled n, train/dev/test, gold-mapping rate; corpus composition
 T2 static_grid          per config x dataset: EM, F1 (95% bootstrap CI), cost components, scalar cost
 T3 oracle_labels        oracle ceiling vs best static; label statistics (all-fail / all-succeed / mixed)
 T6 breakdown            router vs best static per dataset and per hops type (paired bootstrap)
@@ -7,6 +8,10 @@ T7 best_by_qtype        best static config per question type with stability + ma
 T8 weight_sensitivity   static cost ranking stability (Kendall tau) and frontier membership under weight draws
 T9 offline_vs_marginal  offline cost, marginal cost, amortised total under several amortisation factors
 T10 latency             p50/p95 per config (same session only)
+T3c / T4c chance-corrected FEVER: FEVER accuracy has a 0.5 chance floor while QA F1 / zsRE EM start near 0, so a
+                        pooled mean mixes scales. Re-report with FEVER as 2*acc - 1 (0 = chance), routing unchanged.
+T8b router weight sensitivity: router iso-cost dQ and iso-quality saving under every alternative weight set
+                        (router/train_eval.py --weight-set <name>, output dirs router_w-<name>/)
 Router headline (T4) and ablations (T5) are produced by router/train_eval.py and summarised here.
 
 Usage: python -m ragroute.analysis.tables
@@ -133,6 +138,107 @@ def latency_summary(lat: pd.DataFrame) -> pd.DataFrame:
             .rename(columns={0.5: "p50_s", 0.95: "p95_s"}).reset_index())
 
 
+METRIC = {"qa": "token F1", "verification": "accuracy", "slot_filling": "exact match"}
+
+
+def datasets_corpus(data: Path, res: Path) -> pd.DataFrame:
+    """T1: one row per dataset plus corpus rows (sub-corpus composition) from corpus_stats.json."""
+    meta = pd.read_parquet(data / "qa_meta.parquet")
+    splits = pd.read_parquet(data / "splits.parquet")[["qid", "split"]]
+    meta = meta.merge(splits, on="qid", validate="1:1")
+    rows = []
+    for ds, g in meta.groupby("dataset"):
+        n_split = g["split"].value_counts()
+        rows.append({"item": ds, "task": g["task"].iloc[0], "metric": METRIC.get(g["task"].iloc[0], ""),
+                     "n": len(g), "train": int(n_split.get("train", 0)), "dev": int(n_split.get("dev", 0)),
+                     "test": int(n_split.get("test", 0)),
+                     "gold_mapped_pct": round(100 * float(g["has_gold"].mean()), 1) if "has_gold" in g else np.nan,
+                     "qtypes": "; ".join(f"{k}={v}" for k, v in g["qtype"].value_counts().items())})
+    stats_path = data / "corpus_stats.json"
+    if stats_path.exists():
+        st = json.loads(stats_path.read_text())
+        for k in ("full_corpus_passages", "subcorpus_passages", "n_mined", "n_gold_neighbours", "n_random_fill",
+                  "gold_titles_needed", "gold_titles_found"):
+            if k in st:
+                rows.append({"item": f"corpus: {k}", "n": st[k]})
+    leak = res / "leakage_report.json"
+    if leak.exists():
+        for k, v in json.loads(leak.read_text()).items():
+            if isinstance(v, (int, float)):
+                rows.append({"item": f"leakage: {k}", "n": v})
+    return pd.DataFrame(rows)
+
+
+def chance_corrected(q: pd.Series, task: pd.Series) -> pd.Series:
+    """FEVER accuracy -> 2*acc - 1 (0 = chance on 2 balanced labels); other tasks unchanged."""
+    return q.where(task != "verification", 2 * q - 1)
+
+
+def fever_chance_corrected_static(runs: pd.DataFrame, split: str = "test") -> pd.DataFrame:
+    """T3c: per task, best static (chosen on train, raw metric) and oracle-best, raw and chance-corrected,
+    plus the macro-over-task mean both ways."""
+    train = runs[runs["split"] == "train"]
+    best_static = train.groupby("config_id")["quality"].mean().idxmax()
+    sub = runs[runs["split"] == split]
+    rows = []
+    for task, g in sub.groupby("task"):
+        Q, C = wide(g, "quality"), wide(g, "cost")
+        pick = oracle_best(Q.to_numpy(), C.to_numpy())
+        oq = pd.Series(Q.to_numpy()[np.arange(len(pick)), pick])
+        sq = Q[best_static].reset_index(drop=True)
+        t = pd.Series(task, index=oq.index)
+        rows.append({"task": task, "n": len(Q), "best_static": best_static,
+                     "static_raw": sq.mean(), "oracle_raw": oq.mean(),
+                     "static_cc": chance_corrected(sq, t).mean(), "oracle_cc": chance_corrected(oq, t).mean()})
+    df = pd.DataFrame(rows)
+    macro = {"task": "MACRO over tasks", "n": int(df["n"].sum()), "best_static": best_static}
+    for c in ("static_raw", "oracle_raw", "static_cc", "oracle_cc"):
+        macro[c] = df[c].mean()
+    df = pd.concat([df, pd.DataFrame([macro])], ignore_index=True)
+    df["headroom_raw"] = df["oracle_raw"] - df["static_raw"]
+    df["headroom_cc"] = df["oracle_cc"] - df["static_cc"]
+    return df
+
+
+def fever_chance_corrected_routers(picks: pd.DataFrame, runs: pd.DataFrame) -> pd.DataFrame:
+    """T4c: every router on ALL test queries vs the best static config (chosen on train), macro over tasks,
+    with FEVER raw and chance-corrected. The routing decisions are the main run's; only the scoring changes."""
+    test = runs[runs["split"] == "test"]
+    if test["task"].nunique() < 2 or picks.empty:
+        return pd.DataFrame()
+    best_static = runs[runs["split"] == "train"].groupby("config_id")["quality"].mean().idxmax()
+    ref = test[test["config_id"] == best_static].set_index("qid")[["quality", "task"]]
+    rows = []
+    for (pol, mode), sub in picks[picks["scope"].isin(["global", "per_task"])].groupby(["policy", "mode"]):
+        per_q = sub.groupby("qid")["quality"].mean().reindex(ref.index)
+        for name, f in (("raw", lambda q: q), ("chance_corrected", lambda q: chance_corrected(q, ref["task"]))):
+            b = paired_bootstrap(f(per_q).to_numpy(), f(ref["quality"]).to_numpy(), strata=ref["task"].to_numpy(),
+                                 statistic="macro")
+            rows.append({"policy": pol, "mode": mode, "fever_scoring": name, "router_macro_task": b.mean_a,
+                         "static_macro_task": b.mean_b, "dQ_macro_task": b.diff, "ci_low": b.ci_low,
+                         "ci_high": b.ci_high, "p": b.p_value})
+    return pd.DataFrame(rows)
+
+
+def router_weight_sensitivity(res: Path, policies=("router_A_gbdt", "router_B_gbdt")) -> pd.DataFrame:
+    """T8b: the headline (ALL test queries, global scope) for each cost-weight set the routers were re-run with."""
+    rows = []
+    for d in [res / "router", *sorted(res.glob("router_w-*"))]:
+        h = d / "headline.csv"
+        if not h.exists():
+            continue
+        df = pd.read_csv(h)
+        if "eval_on" in df:
+            df = df[(df["eval_on"] == "ALL") & (df["scope"] == "global")]
+        df = df[df["policy"].isin(policies) & df["mode"].isin(["iso_cost", "iso_quality"])]
+        ws = d.name.split("router_w-")[1] if "router_w-" in d.name else "default"
+        for r in df.itertuples():
+            rows.append({"weight_set": ws, "policy": r.policy, "mode": r.mode, "dQ": r.dQ,
+                         "dQ_ci": f"[{r.dQ_ci_low:.3f}, {r.dQ_ci_high:.3f}]", "cost_saving_pct": r.cost_saving_pct,
+                         "gap_closed": r.gap_closed})
+    return pd.DataFrame(rows)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
@@ -150,10 +256,15 @@ def main():
         (out / f"{name}.tex").write_text(df.to_latex(index=False, float_format="%.3f"))
         print(f"== {name}\n{df.head(30).to_string()}\n")
 
+    save(datasets_corpus(Path(cfg["paths"]["data_root"]), res), "T1_datasets_corpus")
     save(static_grid(runs), "T2_static_grid")
     save(oracle_vs_static(runs), "T3_oracle_vs_static")
+    if runs["task"].nunique() > 1:
+        save(fever_chance_corrected_static(runs), "T3c_fever_chance_corrected_static")
     save(best_by_qtype(runs), "T7_best_by_qtype")
-    save(weight_sensitivity(runs, weights).describe(include="all").reset_index(), "T8_weight_sensitivity_summary")
+    ws = weight_sensitivity(runs, weights)
+    save(ws, "T8_weight_sensitivity_draws")
+    save(ws.drop(columns="frontier").describe().reset_index(), "T8_weight_sensitivity_summary")
     picks_path = res / "router" / "picks.parquet"
     if picks_path.exists():
         picks = pd.read_parquet(picks_path)
@@ -161,6 +272,12 @@ def main():
             save(breakdown(picks, runs, args.policy, mode), f"T6_breakdown_{args.policy}_{mode}")
         head = pd.read_csv(res / "router" / "headline.csv")
         save(head, "T4_T5_router_headline_and_ablations")
+        cc = fever_chance_corrected_routers(picks, runs)
+        if len(cc):
+            save(cc, "T4c_fever_chance_corrected_routers")
+        rws = router_weight_sensitivity(res)
+        if len(rws):
+            save(rws, "T8b_router_weight_sensitivity")
     offline_path = res / "offline_cost.json"
     if offline_path.exists():
         save(offline_vs_marginal(runs, json.loads(offline_path.read_text()),

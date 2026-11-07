@@ -5,18 +5,20 @@
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
 #SBATCH --time=06:00:00
-#SBATCH -o /home2/cs4406.11/ragroute_run/logs/%x_%j.out
-# Job A (CPU only): build llama.cpp, sample datasets, download DPR Wikipedia + Pyserini BM25 index to the node SSD,
+#SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
+# Job A (CPU only): (pilot: build llama.cpp), sample datasets, download DPR Wikipedia + Pyserini BM25 index to the node SSD,
 # mine full-corpus BM25 candidates, build the sub-corpus, split, write AutoRAG YAMLs.
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobA_prep_cpu.sbatch
 # Every step skips work already done, so resubmitting after a timeout resumes.
 set -euo pipefail
-source /home2/cs4406.11/ragroute_run/code/slurm/ada/env.sh
+source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env prepA
 
-step "build llama.cpp"
-bash slurm/ada/build_llamacpp.sh
+if [ "$RAGROUTE_BACKEND" = "llamacpp" ]; then   # pilot only; the full run generates with vLLM
+  step "build llama.cpp"
+  bash slurm/ada/build_llamacpp.sh
+fi
 
 step "sample datasets"
 [ -s "$DATA_ROOT/qa_raw.parquet" ] || py -m ragroute.data.prepare_qa
@@ -28,14 +30,31 @@ if [ "$(stat -c %s "$DPR_TSV" 2>/dev/null || echo 0)" != "$DPR_BYTES" ]; then
 fi
 ls -la "$DPR_TSV"; (zcat "$DPR_TSV" | head -2 | cut -c1-150) || true
 
-step "download + verify + unpack the Pyserini BM25 index (resumable; Pyserini's own downloader cannot resume)"
-if ! ls "$IDX_DIR"/*/segments_* >/dev/null 2>&1; then
-  mkdir -p "$(dirname "$IDX_TAR")" "$IDX_DIR"
-  wget -c -q --tries=30 --waitretry=10 --retry-connrefused -O "$IDX_TAR" "$IDX_URL"
-  echo "$IDX_MD5  $IDX_TAR" | md5sum -c -
-  tar -xzf "$IDX_TAR" -C "$IDX_DIR" && rm -f "$IDX_TAR"
+# Full-corpus BM25 index. Default (7 Nov 2026): BUILD it from the DPR TSV. The prebuilt Pyserini index (9.2 GB) came
+# from its server at ~0.2 MB/s (~12 h); the TSV downloads in minutes and Lucene indexes 21M passages in < 1 h.
+# BM25_INDEX=prebuilt restores the pilot's route (wget -c + MD5 + unpack).
+if [ "${BM25_INDEX:-build}" = "prebuilt" ]; then
+  step "download + verify + unpack the Pyserini BM25 index (resumable; Pyserini's own downloader cannot resume)"
+  if ! ls "$IDX_DIR"/*/segments_* >/dev/null 2>&1; then
+    mkdir -p "$(dirname "$IDX_TAR")" "$IDX_DIR"
+    wget -c -q --tries=30 --waitretry=10 --retry-connrefused -O "$IDX_TAR" "$IDX_URL"
+    echo "$IDX_MD5  $IDX_TAR" | md5sum -c -
+    tar -xzf "$IDX_TAR" -C "$IDX_DIR" && rm -f "$IDX_TAR"
+  fi
+  INDEX_PATH=$(dirname "$(ls "$IDX_DIR"/*/segments_* | head -1)")
+else
+  JSONL=$NODE_SCRATCH/dpr_jsonl
+  INDEX_PATH=$NODE_SCRATCH/bm25_index_built
+  if [ ! -f "$INDEX_PATH/_DONE" ]; then
+    step "DPR TSV -> Pyserini JSONL shards"
+    [ -f "$JSONL/_DONE" ] || py -m ragroute.data.dpr_to_jsonl --tsv "$DPR_TSV" --out "$JSONL" --shards "$SLURM_CPUS_PER_TASK"
+    step "build the Lucene BM25 index (Pyserini defaults, $SLURM_CPUS_PER_TASK threads)"
+    rm -rf "$INDEX_PATH"
+    pymine -m pyserini.index.lucene --collection JsonCollection --input "$JSONL" --index "$INDEX_PATH" \
+         --generator DefaultLuceneDocumentGenerator --threads "$SLURM_CPUS_PER_TASK"
+    date -Is > "$INDEX_PATH/_DONE"
+  fi
 fi
-INDEX_PATH=$(dirname "$(ls "$IDX_DIR"/*/segments_* | head -1)")
 echo "index at $INDEX_PATH"; du -sh "$INDEX_PATH"
 
 step "BM25 mining over all 21M passages"

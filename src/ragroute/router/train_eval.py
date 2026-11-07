@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -46,7 +47,7 @@ from sklearn.model_selection import cross_val_predict
 from sklearn.preprocessing import StandardScaler
 
 from ragroute.config import RagConfig, config_feature_frame, load_cost_weights, load_experiment
-from ragroute.cost import router_overhead
+from ragroute.cost import router_overhead, scalar_cost
 from ragroute.oracle import cost_scale, oracle_best, oracle_lambda, wide
 from ragroute.router.models import make_model
 from ragroute.router.policies import (Grid, cheapest_pick, per_group_static_pick, predicted_cost, quality_at_cost,
@@ -128,10 +129,10 @@ def overhead_kind(groups: list[str]) -> str:
 
 # ------------------------------------------------------------------ main experiment
 def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int], reuse: bool = True,
-        per_task: bool = True):
+        per_task: bool = True, weight_set: str | None = None, n_workers: int = 5):
     res = Path(cfg["paths"]["results_dir"])
-    # the conservative (no probe reuse) run is a sensitivity check: keep it apart so it never overwrites the main run
-    out = res / ("router" if reuse else "router_noreuse")
+    # sensitivity runs (no probe reuse; another cost-weight set) are kept apart so they never overwrite the main run
+    out = res / (("router" if reuse else "router_noreuse") + (f"_w-{weight_set}" if weight_set else ""))
     out.mkdir(parents=True, exist_ok=True)
     runs = pd.read_parquet(res / "runs_scored.parquet")
     meta = pd.read_parquet(Path(cfg["paths"]["data_root"]) / "qa_meta.parquet")
@@ -140,7 +141,10 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     emb = np.load(feats / "question_embeddings.npy")
     rf = pd.read_parquet(feats / "retrieval_features.parquet")
     weights = load_cost_weights()
-    w = weights["weight_sets"][weights["default"]]
+    w = weights["weight_sets"][weight_set or weights["default"]]
+    if weight_set:  # re-price every (query, config) cell; quality and the routers' inputs are unchanged
+        runs = runs.assign(cost=scalar_cost(runs, w))
+        print(f"cost re-priced with weight set '{weight_set}'")
 
     grids = {s: build_grid(runs, meta, s) for s in ("train", "dev", "test")}
     tr, dv, te = grids["train"], grids["dev"], grids["test"]
@@ -206,7 +210,9 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
             groups = FEATURE_SETS[fs]
             kind = overhead_kind(groups)
             for model_name in models:
-                for seed in seeds:
+                def fit_seed(seed, fs=fs, groups=groups, kind=kind, model_name=model_name, scope=scope,
+                             s_tr=s_tr, s_dv=s_dv, s_te=s_te, suffix=suffix, all_label=all_label):
+                    # one seed = one independent fit; seeds run in parallel threads (record/picks only append)
                     frame, gcols = query_frame(qf, emb, rf, meta, s_tr.qids, seed)
                     cols = [c for g in groups for c in gcols[g]]
                     model = make_model(model_name, seed)
@@ -247,11 +253,19 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                                                            "seed": seed, "qid": g.qids,
                                                            "config_id": np.array(configs)[pick],
                                                            "quality": q, "cost": c}))
-                    print(f"done {pol} seed={seed} selected={sel}")
+                    print(f"done {pol} seed={seed} selected={sel}", flush=True)
 
+                with ThreadPoolExecutor(max_workers=min(len(seeds), n_workers)) as ex:
+                    list(ex.map(fit_seed, seeds))  # list() re-raises any exception from a worker
+
+    # threads append in completion order: sort so the output files are identical across runs
     curves_df = pd.DataFrame(curves)
+    curves_df = curves_df.sort_values([c for c in ("policy", "split", "group", "lambda", "seed", "config_id")
+                                       if c in curves_df.columns], kind="mergesort").reset_index(drop=True)
     curves_df.to_parquet(out / "curves.parquet", index=False)
     picks_df = pd.concat(picks, ignore_index=True) if picks else pd.DataFrame()
+    if len(picks_df):
+        picks_df = picks_df.sort_values(["policy", "mode", "seed", "qid"], kind="mergesort").reset_index(drop=True)
     picks_df = add_combined_per_task(picks_df, tasks, len(te.qids))
     picks_df.to_parquet(out / "picks.parquet", index=False)
     (out / "importance.json").write_text(json.dumps(importance, indent=2))
@@ -338,10 +352,13 @@ def main():
     ap.add_argument("--seeds", nargs="+", type=int, default=None)
     ap.add_argument("--no-reuse", action="store_true", help="conservative Router B accounting (probe never reused)")
     ap.add_argument("--no-per-task", action="store_true", help="train only the global router (skip per-task routers)")
+    ap.add_argument("--workers", type=int, default=5, help="seeds fitted in parallel threads")
+    ap.add_argument("--weight-set", default=None,
+                    help="re-price costs with this set from configs/cost_weights.yaml (sensitivity; own output dir)")
     args = ap.parse_args()
     cfg = load_experiment(args.config)
     run(cfg, args.models, args.feature_sets, args.seeds or cfg["router_seeds"], reuse=not args.no_reuse,
-        per_task=not args.no_per_task)
+        per_task=not args.no_per_task, weight_set=args.weight_set, n_workers=args.workers)
 
 
 if __name__ == "__main__":

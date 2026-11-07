@@ -1,5 +1,28 @@
 # Deliverable 3: SLURM on Ada
 
+## Full run (from 7 Nov 2026, account cs4406.07): exact sequence
+The full run uses a fresh account (`cs4406.07`; same QoS: 1 GPU, 10 CPUs, 6 h, **one job in the queue at a
+time**). Nothing from the pilot account is readable from it. Every script uses `$HOME` and `/home2/%u`, so the
+same steps work from any course account.
+
+| Step | Command (from `~/ragroute_run`) | What it does | Time |
+|---|---|---|---|
+| 0 | `bash code/slurm/ada/bootstrap_account.sh` (login node, once) then `bash code/slurm/ada/setup_ragas_env.sh` | micromamba; envs `ragroute-vllm` (8.1 GB), `ragroute-mining` (1.7 GB), `ragroute-ragas` (1.1 GB) | ~15 min |
+| A | `sbatch code/slurm/ada/jobA_prep_cpu.sbatch` | sample 5 × 1,000 questions; DPR TSV to node SSD; **build** the BM25 index (the prebuilt one downloads at 0.2 MB/s); mine top-50; 500k sub-corpus; grouped split; AutoRAG YAMLs | ~2 h |
+| B1 | `sbatch code/slurm/ada/jobB1_retrieval_gpu.sbatch` | AutoRAG retrieval trial (ingest + 3 retrievers), rerank, router features, fp16-vs-fp32 check of the 1.5B model | ~3 h |
+| — | set `models.generators.qwen1p5b.dtype` from `results/dtype_check_qwen1p5b.json` | precision decision (docs/02 D10) | — |
+| K | `sbatch code/slurm/ada/jobK_calibrate_gpu.sbatch` | measured cost weights → `configs/cost_weights_measured.yaml` (copy into the repo) | ~2 h |
+| B2 | `sbatch code/slurm/ada/jobB2_generate_gpu.sbatch` (resubmit until it prints `collect + score the grid`) | 24 configs × 5,000 questions with vLLM; token checks; offline cost; scored grid | ~8 h over 2 jobs |
+| D | `sbatch code/slurm/ada/jobD_checks_gpu.sbatch` | equivalence with AutoRAG's own pipeline; greedy reproducibility | ~1 h |
+| C | `sbatch code/slurm/ada/jobC_analysis_cpu.sbatch` | tests; routers (LR/GBDT/MLP, 5 seeds, global + per task); no-reuse and cost-weight reruns; tables; figures | ~3–5 h |
+| J | `sbatch code/slurm/ada/jobJ_judge_gpu.sbatch` | 150 items to annotate + Llama-3.1-8B judge on them and on the test subsample | ~2 h |
+
+Uploading code from a Windows checkout: `core.autocrlf=true` writes CRLF line endings, which break bash on Ada.
+Convert after every upload: `find ~/ragroute_run/code -name '*.sh' -o -name '*.sbatch' -o -name '*.py' -o -name '*.yaml' | xargs sed -i 's/\r$//'`.
+
+---
+(Below: the pilot-era notes for account cs4406.11, kept for the record.)
+
 All scripts are in `slurm/`. Replace `VERIFY_ACCOUNT` / `VERIFY_PARTITION` and the paths in
 `slurm/common.sh` once (`grep -rn VERIFY slurm/`). Check with the Ada documentation or admins: GPU type
 per partition, `--gres` syntax, max wall time, max GPUs per user, scratch paths, `--exclusive`

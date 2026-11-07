@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 
 from ragroute.config import load_experiment
-from ragroute.harness.run_stages import _paths, _qa_frame, gpu_name
+from ragroute.harness.run_stages import _paths, _qa_frame, gen_dtype, gpu_name
 
 K_LEVELS = (1, 3, 10)
 M_LEVELS = (1, 32)
@@ -90,12 +90,13 @@ def calibrate_generate(cfg, gen_key: str, n: int, repeats: int):
     df = _sample(cfg, n)
     msgs = {k: build_messages(cfg, df, k) for k in K_LEVELS}
     base = {"component": "generate", "generator": gen_key, "backend": gen["backend"], "n_calls": len(df),
+            "dtype": gen_dtype(cfg, gen_key) if gen["backend"] == "vllm" else None,
             "gpus": int(g.get("tensor_parallel_size", 1))}
 
     if gen["backend"] == "vllm":
         from vllm import LLM, SamplingParams
 
-        llm = LLM(g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen["dtype"],
+        llm = LLM(g.get("vllm_model", g["hf_id"]), tensor_parallel_size=g["tensor_parallel_size"], dtype=gen_dtype(cfg, gen_key),
                   max_model_len=gen["max_model_len"], gpu_memory_utilization=gen["gpu_memory_utilization"],
                   max_num_seqs=gen["max_num_seqs"], max_num_batched_tokens=gen["max_num_batched_tokens"],
                   enable_prefix_caching=False, seed=gen["seed"])

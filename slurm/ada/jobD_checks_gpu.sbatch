@@ -6,19 +6,23 @@
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
 #SBATCH --time=03:00:00
-#SBATCH -o /home2/cs4406.11/ragroute_run/logs/%x_%j.out
+#SBATCH --exclude=gnode[001-008,011-012,017,020-023,025-029,031,033-036,038,040-041]  # = all u22 nodes below gnode042
+#SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job D (1 GPU, after job B): validity checks on the small generator.
 #  1) staged runner == AutoRAG's own end-to-end pipeline (2 configs, 50 queries each)
 #  2) our input-token count == the serving engine's prompt length (also checks the chat template)
 #  3) greedy-decoding reproducibility: re-run one config into a separate folder and compare texts
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobD_checks_gpu.sbatch
 set -euo pipefail
-source /home2/cs4406.11/ragroute_run/code/slurm/ada/env.sh
+source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env checksD
 
+[ "$RAGROUTE_BACKEND" = "vllm" ] && require_vllm_gpu
+step "regenerate AutoRAG YAMLs (per-generator dtype is fixed only after job B1)"
+py -m ragroute.harness.make_autorag_yaml
 step "token count check"
-py -m ragroute.harness.run_stages check_tokens --generator qwen1p5b
+[ -s "$RESULTS_ROOT/token_count_check_qwen1p5b.json" ] || py -m ragroute.harness.run_stages check_tokens --generator qwen1p5b
 step "equivalence: hybrid-k3-rr1-qwen1p5b"
 py -m ragroute.harness.check_equivalence --config-id hybrid-k3-rr1-qwen1p5b --n 50
 step "equivalence: bm25-k10-rr0-qwen1p5b"
