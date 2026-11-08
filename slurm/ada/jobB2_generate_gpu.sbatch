@@ -16,6 +16,7 @@ source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 require_vllm_gpu
 log_env genB2
+require_py
 
 for GEN in ${GENERATORS:-qwen1p5b qwen7b}; do
   step "generate $GEN (all 12 retrieval variants)"

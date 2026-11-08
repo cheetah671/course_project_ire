@@ -17,6 +17,7 @@ set -euo pipefail
 source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env checksD
+require_py
 
 [ "$RAGROUTE_BACKEND" = "vllm" ] && require_vllm_gpu
 step "regenerate AutoRAG YAMLs (per-generator dtype is fixed only after job B1)"

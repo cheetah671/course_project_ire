@@ -17,6 +17,7 @@ source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 require_vllm_gpu
 log_env indexK2
+require_py
 TIMINGS=$RUN/calibration/calibration/calibration_timings.jsonl
 
 if ! grep -q '"component": "index"' "$TIMINGS" 2>/dev/null; then

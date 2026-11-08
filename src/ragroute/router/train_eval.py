@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -157,17 +156,19 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     multi_task = len(tasks) > 1
     curves, picks, importance = [], [], {}
 
-    def record(policy, split, lam, q, c, grid, extra=None, all_label="ALL"):
-        """all_label: name of the whole-grid group ("ALL", or "task=<t>" for a per-task router's own grid)."""
+    def record(policy, split, lam, q, c, grid, extra=None, all_label="ALL", sink=None):
+        """all_label: name of the whole-grid group ("ALL", or "task=<t>" for a per-task router's own grid).
+        sink: list to append to (a router seed's own list when it runs in a worker process); default `curves`."""
+        sink = curves if sink is None else sink
         base = {"policy": policy, "split": split, "lambda": lam, "scope": GLOBAL, **(extra or {})}
-        curves.append({**base, "group": all_label, "quality": q.mean(), "cost": c.mean(), "n": len(q)})
+        sink.append({**base, "group": all_label, "quality": q.mean(), "cost": c.mean(), "n": len(q)})
         keys = [("dataset", grid.dataset), ("hops", grid.hops)]
         if multi_task and all_label == "ALL":
             keys.append(("task", grid.task))
         for key, labels in keys:
             for g in np.unique(labels):
                 m = labels == g
-                curves.append({**base, "group": f"{key}={g}", "quality": q[m].mean(), "cost": c[m].mean(), "n": int(m.sum())})
+                sink.append({**base, "group": f"{key}={g}", "quality": q[m].mean(), "cost": c[m].mean(), "n": int(m.sum())})
 
     # ---------- baselines and oracle
     for split, g in (("dev", dv), ("test", te)):
@@ -212,7 +213,9 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
             for model_name in models:
                 def fit_seed(seed, fs=fs, groups=groups, kind=kind, model_name=model_name, scope=scope,
                              s_tr=s_tr, s_dv=s_dv, s_te=s_te, suffix=suffix, all_label=all_label):
-                    # one seed = one independent fit; seeds run in parallel threads (record/picks only append)
+                    # one seed = one independent fit, run in its own worker PROCESS: threads crashed (segfault, Ada job
+                    # 65449) because LightGBM/BLAS OpenMP pools are not safe across Python threads. Results are returned.
+                    my_curves, my_picks, my_imp = [], [], {}
                     frame, gcols = query_frame(qf, emb, rf, meta, s_tr.qids, seed)
                     cols = [c for g in groups for c in gcols[g]]
                     model = make_model(model_name, seed)
@@ -225,7 +228,7 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                             names = cols + list(Fc_df.columns)
                             by_group = {g: float(sum(imp[names.index(c)] for c in gcols[g] if c in names)) for g in groups}
                             by_group["config"] = float(sum(imp[len(cols):len(cols) + Fc.shape[1]]))
-                            importance[fs + suffix] = by_group
+                            my_imp[fs + suffix] = by_group
                     pol = f"router_{fs}_{model_name}{suffix}"
                     info = {"seed": seed, "feature_set": fs, "model": model_name, "scope": scope}
                     sel = {}
@@ -236,7 +239,7 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                         for lam in LAMBDAS:
                             pick = router_pick(Qhat, Chat, lam, scale)
                             q, c = realise(g, pick, router_overhead(kind, retr[pick], w, reuse))
-                            record(pol, split, lam, q, c, g, info, all_label)
+                            record(pol, split, lam, q, c, g, info, all_label, sink=my_curves)
                             lam_q.append(q.mean()); lam_c.append(c.mean())
                         if split == "dev":
                             # lambda is selected against the best static config of the SAME scope (task or all)
@@ -249,16 +252,17 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                             for mode, lam in sel.items():
                                 pick = router_pick(Qhat, Chat, lam, scale)
                                 q, c = realise(g, pick, router_overhead(kind, retr[pick], w, reuse))
-                                picks.append(pd.DataFrame({"policy": pol, "scope": scope, "mode": mode, "lambda": lam,
+                                my_picks.append(pd.DataFrame({"policy": pol, "scope": scope, "mode": mode, "lambda": lam,
                                                            "seed": seed, "qid": g.qids,
                                                            "config_id": np.array(configs)[pick],
                                                            "quality": q, "cost": c}))
                     print(f"done {pol} seed={seed} selected={sel}", flush=True)
+                    return my_curves, my_picks, my_imp
 
-                with ThreadPoolExecutor(max_workers=min(len(seeds), n_workers)) as ex:
-                    list(ex.map(fit_seed, seeds))  # list() re-raises any exception from a worker
+                for c_rows, p_frames, imp_d in run_seeds(fit_seed, seeds, n_workers):
+                    curves.extend(c_rows); picks.extend(p_frames); importance.update(imp_d)
 
-    # threads append in completion order: sort so the output files are identical across runs
+    # sort so the output files do not depend on the order in which results came back
     curves_df = pd.DataFrame(curves)
     curves_df = curves_df.sort_values([c for c in ("policy", "split", "group", "lambda", "seed", "config_id")
                                        if c in curves_df.columns], kind="mergesort").reset_index(drop=True)
@@ -273,6 +277,17 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     headline.to_csv(out / "headline.csv", index=False)
     print(headline.to_string())
     return curves_df, picks_df, headline
+
+
+def run_seeds(fn, seeds: list[int], n_workers: int) -> list:
+    """fn(seed) for every seed; n_workers > 1 uses separate processes (joblib/loky), each limited to a few BLAS/OpenMP
+    threads so 5 workers fit the job's 10 CPUs. Results come back in seed order."""
+    if n_workers <= 1 or len(seeds) <= 1:
+        return [fn(s) for s in seeds]
+    from joblib import Parallel, delayed, parallel_backend
+
+    with parallel_backend("loky", inner_max_num_threads=max(1, 10 // n_workers)):
+        return Parallel(n_jobs=min(n_workers, len(seeds)))(delayed(fn)(s) for s in seeds)
 
 
 def add_combined_per_task(picks: pd.DataFrame, tasks: list, n_test: int) -> pd.DataFrame:
@@ -352,7 +367,7 @@ def main():
     ap.add_argument("--seeds", nargs="+", type=int, default=None)
     ap.add_argument("--no-reuse", action="store_true", help="conservative Router B accounting (probe never reused)")
     ap.add_argument("--no-per-task", action="store_true", help="train only the global router (skip per-task routers)")
-    ap.add_argument("--workers", type=int, default=5, help="seeds fitted in parallel threads")
+    ap.add_argument("--workers", type=int, default=5, help="seeds fitted in parallel worker processes (1 = serial)")
     ap.add_argument("--weight-set", default=None,
                     help="re-price costs with this set from configs/cost_weights.yaml (sensitivity; own output dir)")
     args = ap.parse_args()

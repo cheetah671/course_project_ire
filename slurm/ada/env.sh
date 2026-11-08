@@ -42,6 +42,11 @@ py ()     { "$MM" run -n "$RAGROUTE_ENV" python "$@"; }
 pymine () { OPENAI_API_KEY=${OPENAI_API_KEY:-not-used} "$MM" run -n ragroute-mining python "$@"; }
 step ()   { echo; echo "== $(date -Is) $*"; }
 
+require_py () {  # Ada job 65455 (gnode012): `micromamba run` printed nothing and returned 0, so every step "passed" empty
+  local out; out=$(py -c "import ragroute, sys; print('python-ok', sys.version.split()[0])" 2>&1 || true)
+  case "$out" in *python-ok*) echo "python env OK ($RAGROUTE_ENV)" ;; *) echo "env $RAGROUTE_ENV not usable on $(hostname): $out"; exit 5 ;; esac
+}
+
 require_vllm_gpu () {  # vLLM needs compute capability >= 7.5; stop early if SLURM placed us on a GTX 1080 Ti
   local cap; cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
   echo "GPU: $(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader | head -1), cc $cap"

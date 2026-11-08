@@ -19,6 +19,7 @@ source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 require_vllm_gpu
 log_env judgeJ
+require_py
 JUDGE=$(py -c "from ragroute.config import load_experiment as l; print(l()['judge']['model'])")
 MAXLEN=$(py -c "from ragroute.config import load_experiment as l; print(l()['judge']['max_model_len'])")
 

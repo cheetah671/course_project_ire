@@ -5,6 +5,7 @@
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
 #SBATCH --time=06:00:00
+#SBATCH --exclude=gnode012          # job 65455: the env silently did not run there
 #SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job C (CPU only, after job B): routers + baselines + oracle, then tables and figures.
 # Each router run skips itself once its headline.csv exists, so a job stopped at 6 h resumes when resubmitted
@@ -15,18 +16,23 @@ set -euo pipefail
 source "$HOME/ragroute_run/code/slurm/ada/env.sh"
 cd "$CODE"
 log_env analysisC
+require_py
 
 step "collect + score the grid (no-op if job B already wrote it)"
-[ -s "$RESULTS_ROOT/runs_scored.parquet" ] || py -m ragroute.harness.collect
+if [ ! -s "$RESULTS_ROOT/runs_scored.parquet" ]; then py -m ragroute.harness.collect; fi
 step "unit tests (incl. the Chroma-dependent ones)"
 py -m pytest -q tests || echo "WARNING: unit tests failed (see above)"
 step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + per task)"
-[ -s "$RESULTS_ROOT/router/headline.csv" ] || py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
+if [ ! -s "$RESULTS_ROOT/router/headline.csv" ]; then py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}; fi
 step "conservative Router B accounting (probe never reused)"
-[ -s "$RESULTS_ROOT/router_noreuse/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
+if [ ! -s "$RESULTS_ROOT/router_noreuse/headline.csv" ]; then
+  py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
+fi
 for W in tokens_only params_scaled api_price_like measured_autorag_index; do
   step "router sensitivity to cost weights: $W"
-  [ -s "$RESULTS_ROOT/router_w-$W/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
+  if [ ! -s "$RESULTS_ROOT/router_w-$W/headline.csv" ]; then
+    py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
+  fi
 done
 step "tables"
 py -m ragroute.analysis.tables
