@@ -23,7 +23,15 @@ if [ ! -s "$RESULTS_ROOT/runs_scored.parquet" ]; then py -m ragroute.harness.col
 step "unit tests (incl. the Chroma-dependent ones)"
 py -m pytest -q tests || echo "WARNING: unit tests failed (see above)"
 step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + per task)"
-if [ ! -s "$RESULTS_ROOT/router/headline.csv" ]; then py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}; fi
+if [ ! -s "$RESULTS_ROOT/router/headline.csv" ]; then
+  # A previous job C stopped inside this step (6 h limit; train_eval cannot resume): drop the MLP, first in the
+  # pre-registered cut order (docs/07) and the slowest model, so the retry fits in one job.
+  if [ -f "$RESULTS_ROOT/router_main_attempted" ] && [ -z "${MODELS:-}" ]; then
+    MODELS="lr gbdt"; echo "previous attempt did not finish: MLP router dropped (cut order)"
+  fi
+  touch "$RESULTS_ROOT/router_main_attempted"
+  py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
+fi
 step "conservative Router B accounting (probe never reused)"
 if [ ! -s "$RESULTS_ROOT/router_noreuse/headline.csv" ]; then
   py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
