@@ -313,10 +313,19 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
   - the cross-encoder on 200 × 20 pairs.
 
   `scripts/calibrate_costs.py` fits a_in[g], a_out[g], b_g by non-negative least squares (warning if
-  R² < 0.95), c from the reranker timings, and d from AutoRAG's per-query retrieval time. It writes
+  R² < 0.95), c from the reranker timings, and d from index-query timings (below). It writes
   `configs/cost_weights_measured.yaml`. `load_cost_weights()` then uses the set "measured" as the default
   (falling back to the placeholder set with a warning). `runs_scored.parquet` records which set was used
   (`cost_weight_set`).
+- **Measured weights (8 Nov 2026, Ada jobs 64316 and 65427, RTX 2080 Ti, vLLM 0.11.2).** a_in = 0.063 / 0.312
+  GPU-ms per prompt token and a_out = 0.247 / 2.304 per generated token (1.5B / 7B-AWQ; fit R² 0.999 / 0.988);
+  b = 0 (no fixed per-call cost survives the fit); c = 0.92 ms per reranker pair; **d = 2.7 ms per index query**
+  (Lucene BM25 2.1 ms, bge-base + Chroma 3.2 ms, `ragroute.harness.calibrate_index`, job K2).
+- **Why d is not AutoRAG's timing.** The first fit took d from AutoRAG's per-query retrieval time: 954 ms (BM25
+  1,457 ms, because `rank_bm25` scores all 500k passages in pure Python; dense 452 ms including pandas content
+  fetching). That measures the harness, not retrieval, and would have made one BM25 lookup cost about twice a 7B
+  answer, inflating hybrid configs and Router B's two-query probe. d is therefore measured with standard engines
+  on the same 500k passages, and AutoRAG's value is kept as the sensitivity set `measured_autorag_index` (T8b).
 - **Deviation from the spec's single `a`, and why.** One weight for all tokens would make a 7B token
   cost the same as a 1.5B token, so the generator choice would be free. `a` is therefore indexed by
   generator, and input/output tokens are separated (decode is far costlier per token). Setting

@@ -4,9 +4,10 @@
 # For each step: submit, wait, check its success marker, resubmit after a time-out (up to a limit), then go on.
 # Between B1 and K it sets the 1.5B generator's dtype from the fp16-vs-fp32 check (rule in decide_dtype).
 #
+# Order: B1 -> K -> B2 -> K2 -> D -> C -> J.
 # Usage: nohup bash ~/ragroute_run/code/slurm/ada/run_all_driver.sh [FIRST_STEP] [RUNNING_JOBID] \
 #              > ~/ragroute_run/logs/driver.log 2>&1 < /dev/null &
-#   FIRST_STEP: B1 | K | B2 | D | C | J (default B1). RUNNING_JOBID: an already-submitted job of FIRST_STEP to wait for.
+#   FIRST_STEP: B1 | K | B2 | K2 | D | C | J (default B1). RUNNING_JOBID: an already-submitted job of FIRST_STEP to wait for.
 # Progress: tail ~/ragroute_run/logs/driver.log. Stop: kill the driver's PID (the running job is not touched).
 set -uo pipefail
 RUN=$HOME/ragroute_run
@@ -16,16 +17,17 @@ RES=$RUN/results
 log () { echo "[$(date '+%F %T')] $*"; }
 
 declare -A SCRIPT=([B1]=jobB1_retrieval_gpu.sbatch [K]=jobK_calibrate_gpu.sbatch [B2]=jobB2_generate_gpu.sbatch
-                   [D]=jobD_checks_gpu.sbatch [C]=jobC_analysis_cpu.sbatch [J]=jobJ_judge_gpu.sbatch)
-declare -A NAME=([B1]=rr-retrB1 [K]=rr-calibrate [B2]=rr-genB2 [D]=rr-checksD [C]=rr-analysisC [J]=rr-judgeJ)
-declare -A TRIES=([B1]=2 [K]=2 [B2]=4 [D]=2 [C]=3 [J]=2)
-ORDER=(B1 K B2 D C J)
+                   [K2]=jobK2_index_cost_gpu.sbatch [D]=jobD_checks_gpu.sbatch [C]=jobC_analysis_cpu.sbatch [J]=jobJ_judge_gpu.sbatch)
+declare -A NAME=([B1]=rr-retrB1 [K]=rr-calibrate [B2]=rr-genB2 [K2]=rr-indexK2 [D]=rr-checksD [C]=rr-analysisC [J]=rr-judgeJ)
+declare -A TRIES=([B1]=2 [K]=2 [B2]=4 [K2]=2 [D]=2 [C]=3 [J]=2)
+ORDER=(B1 K B2 K2 D C J)
 
 done_marker () {  # success = the step's own completion marker exists
   case $1 in
     B1) [ -s "$RES/dtype_check_qwen1p5b.json" ] ;;
     K)  [ -s "$CODE/configs/cost_weights_measured.yaml" ] ;;
     B2) [ -s "$RES/runs_scored.parquet" ] && [ -s "$RES/offline_cost.json" ] ;;
+    K2) [ -s "$RES/index_calibration.json" ] ;;
     D)  [ -s "$RES/greedy_reproducibility.json" ] ;;
     C)  ls "$RES"/figures/F2_pareto_test.png >/dev/null 2>&1 && [ -s "$RES/tables/T4_T5_router_headline_and_ablations.csv" ] ;;
     J)  [ -s "$RES/ragas_scores.parquet" ] ;;

@@ -120,7 +120,7 @@ models:
       gguf_repo: Qwen/Qwen2.5-1.5B-Instruct-GGUF
       gguf_pattern: "qwen2.5-1.5b-instruct-q8_0.gguf"   # 1.9 GB
       vllm_model: Qwen/Qwen2.5-1.5B-Instruct    # vllm backend: fp16, ~3 GB
-      dtype: null                 # DTYPE_1P5B: set from job B1's fp16-vs-fp32 check (null = generation.dtype)
+      dtype: float16                 # DTYPE_1P5B: set from job B1's fp16-vs-fp32 check (null = generation.dtype)
 
 generation:
   # Serving engine. vllm needs compute capability >= 7.5 (RTX 2080 Ti+). The pilot ran llamacpp on a GTX 1080 Ti

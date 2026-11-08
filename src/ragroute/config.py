@@ -63,6 +63,10 @@ def load_cost_weights(path: str | Path | None = None, measured_path: str | Path 
         m = load_yaml(measured)
         w["weight_sets"]["measured"] = m["weights"]
         w["measured_info"] = m.get("info", {})
+        d_auto = w["measured_info"].get("d_autorag")
+        if d_auto and w["measured_info"].get("index_source") == "calibrate_index":
+            # sensitivity set: same weights, but an index query priced at AutoRAG's own (harness-bound) timing
+            w["weight_sets"]["measured_autorag_index"] = {**m["weights"], "d": float(d_auto)}
     if w["default"] not in w["weight_sets"]:
         fallback = w.get("fallback_default", "measured_placeholder")
         warnings.warn(f"cost weight set '{w['default']}' not available (run scripts/calibrate_costs.py); "

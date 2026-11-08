@@ -10,8 +10,11 @@ Model (units: GPU-milliseconds, i.e. wall ms x GPUs used)
       gpu_ms = a_in[g] * input_tokens + a_out[g] * output_tokens + b_g * calls        (non-negative least squares)
   b   = mean of b_g over generators (cost_weights.yaml has one b; per-generator values are in the report)
   c   = GPU-ms per query-passage pair scored by the cross-encoder
-  d   = mean wall ms per index query over BM25 and dense retrieval (AutoRAG execution_time; BM25 runs on CPU,
-        so d mixes CPU and GPU time; it is small next to generation, and T8 tests sensitivity to it)
+  d   = mean wall ms per index query over BM25 and dense retrieval, measured with standard engines on the run's
+        500k passages (ragroute.harness.calibrate_index: Lucene BM25, 1 thread; bge-base on the GPU + Chroma HNSW).
+        AutoRAG's own per-query retrieval time is kept as d_autorag: it measures the harness (rank_bm25 scores every
+        passage in pure Python: 1,457 ms/query at 500k), not retrieval, and is used only as a sensitivity weight set.
+        BM25 runs on CPU, so d mixes CPU and GPU time.
 
 Once configs/cost_weights_measured.yaml exists, load_cost_weights() uses its "measured" set as the default.
 The placeholder sets stay for the sensitivity table.
@@ -67,22 +70,37 @@ def fit_rerank(cal_rows: list[dict], stage_rows: list[dict]) -> tuple[float, str
     raise ValueError("no rerank timings in either file")
 
 
-def fit_index(stage_rows: list[dict]) -> float:
+def fit_index_autorag(stage_rows: list[dict]) -> float | None:
     per = {r["stage"]: r["sec_per_query_autorag"] for r in stage_rows
            if r.get("stage") in ("retrieval_bm25", "retrieval_dense") and r.get("sec_per_query_autorag") is not None}
-    if len(per) < 2:
-        raise ValueError(f"need retrieval_bm25 and retrieval_dense timings, found {sorted(per)}")
-    return 1000.0 * float(np.mean(list(per.values())))
+    return 1000.0 * float(np.mean(list(per.values()))) if len(per) == 2 else None
+
+
+def fit_index(cal_rows: list[dict], stage_rows: list[dict]) -> tuple[float, dict]:
+    """d from calibrate_index rows (mean over repeats per retriever, then over BM25 and dense); AutoRAG fallback."""
+    by = {}
+    for r in cal_rows:
+        if r.get("component") == "index":
+            by.setdefault(r["retriever"], []).append(r["ms_per_query"])
+    auto = fit_index_autorag(stage_rows)
+    if {"bm25", "dense"} <= set(by):
+        per = {k: float(np.mean(v)) for k, v in by.items()}
+        return float(np.mean([per["bm25"], per["dense"]])), {"index_source": "calibrate_index", "index_ms": per,
+                                                            "d_autorag": auto}
+    if auto is None:
+        raise ValueError("no index timings: run ragroute.harness.calibrate_index, or give AutoRAG stage timings")
+    return auto, {"index_source": "autorag_stage_timings", "d_autorag": auto}
 
 
 def fit_weights(cal_rows: list[dict], stage_rows: list[dict]) -> tuple[dict, dict]:
     gen = fit_generation([r for r in cal_rows if r.get("component") == "generate"])
     c, c_src = fit_rerank(cal_rows, stage_rows)
+    d, d_info = fit_index(cal_rows, stage_rows)
     weights = {"a_in": {g: round(v["a_in"], 6) for g, v in gen.items()},
                "a_out": {g: round(v["a_out"], 6) for g, v in gen.items()},
                "b": round(float(np.mean([v["b"] for v in gen.values()])), 6),
-               "c": round(c, 6), "d": round(fit_index(stage_rows), 6)}
-    report = {"generation_fit": gen, "rerank_source": c_src,
+               "c": round(c, 6), "d": round(d, 6)}
+    report = {"generation_fit": gen, "rerank_source": c_src, **d_info,
               "units": "GPU-ms per prompt token (a_in), per generated token (a_out), per call (b), "
                        "per rerank pair (c); wall ms per index query (d)"}
     return weights, report

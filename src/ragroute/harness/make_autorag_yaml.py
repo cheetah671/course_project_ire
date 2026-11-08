@@ -23,6 +23,7 @@ AutoRAG facts this relies on (0.3.27):
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import yaml
@@ -105,7 +106,10 @@ def generator_node(cfg: dict, gen_key: str) -> dict:
                 "temperature": gen["temperature"], "max_tokens": gen["max_tokens"],
                 "tensor_parallel_size": g["tensor_parallel_size"], "dtype": g.get("dtype") or gen["dtype"],  # = run_stages.gen_dtype
                 "max_model_len": gen["max_model_len"],
-                "gpu_memory_utilization": gen["gpu_memory_utilization"], "max_num_seqs": gen["max_num_seqs"],
+                # RAGROUTE_EQUIV_GPU_UTIL: AutoRAG's end-to-end pipeline (equivalence check) keeps the embedding model and
+                # reranker on the GPU (~1.8 GB) when vLLM starts, so 0.78 runs out of memory there (Ada job 64524)
+                "gpu_memory_utilization": float(os.environ.get("RAGROUTE_EQUIV_GPU_UTIL") or gen["gpu_memory_utilization"]),
+                "max_num_seqs": gen["max_num_seqs"],
                 "max_num_batched_tokens": gen["max_num_batched_tokens"],
                 "seed": gen["seed"],
             }]}

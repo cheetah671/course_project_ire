@@ -24,7 +24,7 @@ step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + pe
 [ -s "$RESULTS_ROOT/router/headline.csv" ] || py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
 step "conservative Router B accounting (probe never reused)"
 [ -s "$RESULTS_ROOT/router_noreuse/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-reuse --no-per-task
-for W in tokens_only params_scaled api_price_like; do
+for W in tokens_only params_scaled api_price_like measured_autorag_index; do
   step "router sensitivity to cost weights: $W"
   [ -s "$RESULTS_ROOT/router_w-$W/headline.csv" ] || py -m ragroute.router.train_eval --models gbdt --feature-sets A B --no-per-task --weight-set $W
 done

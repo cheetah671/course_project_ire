@@ -20,7 +20,7 @@ log_env checksD
 
 [ "$RAGROUTE_BACKEND" = "vllm" ] && require_vllm_gpu
 step "regenerate AutoRAG YAMLs (per-generator dtype is fixed only after job B1)"
-py -m ragroute.harness.make_autorag_yaml
+RAGROUTE_EQUIV_GPU_UTIL=0.6 py -m ragroute.harness.make_autorag_yaml   # 0.78 + AutoRAG's embedder/reranker = OOM
 step "token count check"
 [ -s "$RESULTS_ROOT/token_count_check_qwen1p5b.json" ] || py -m ragroute.harness.run_stages check_tokens --generator qwen1p5b
 step "equivalence: hybrid-k3-rr1-qwen1p5b"
