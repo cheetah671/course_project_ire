@@ -35,7 +35,9 @@ Usage: python -m ragroute.router.train_eval [--models lr gbdt mlp] [--feature-se
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import pickle
 from pathlib import Path
 
 import numpy as np
@@ -144,6 +146,11 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     if weight_set:  # re-price every (query, config) cell; quality and the routers' inputs are unchanged
         runs = runs.assign(cost=scalar_cost(runs, w))
         print(f"cost re-priced with weight set '{weight_set}'")
+
+    # results of every finished router group are cached here, so a run cut off by the 6 h job limit resumes (Ada jobs
+    # 65460/65674 restarted from zero twice). The key covers the inputs: scored grid, features, seeds, accounting.
+    cache_dir = out / "cache" / _fingerprint(res, feats, seeds, reuse, weight_set)
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     grids = {s: build_grid(runs, meta, s) for s in ("train", "dev", "test")}
     tr, dv, te = grids["train"], grids["dev"], grids["test"]
@@ -259,7 +266,16 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                     print(f"done {pol} seed={seed} selected={sel}", flush=True)
                     return my_curves, my_picks, my_imp
 
-                for c_rows, p_frames, imp_d in run_seeds(fit_seed, seeds, n_workers):
+                cache_f = cache_dir / f"router_{fs}_{model_name}{suffix}.pkl"
+                if cache_f.exists():
+                    results = pickle.loads(cache_f.read_bytes())
+                    print(f"cached router_{fs}_{model_name}{suffix} ({len(results)} seeds)", flush=True)
+                else:
+                    results = run_seeds(fit_seed, seeds, n_workers)
+                    tmp = cache_f.with_suffix(".tmp")
+                    tmp.write_bytes(pickle.dumps(results))
+                    tmp.replace(cache_f)  # atomic: a job killed mid-write never leaves a half file
+                for c_rows, p_frames, imp_d in results:
                     curves.extend(c_rows); picks.extend(p_frames); importance.update(imp_d)
 
     # sort so the output files do not depend on the order in which results came back
@@ -279,15 +295,32 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     return curves_df, picks_df, headline
 
 
-def run_seeds(fn, seeds: list[int], n_workers: int) -> list:
-    """fn(seed) for every seed; n_workers > 1 uses separate processes (joblib/loky), each limited to a few BLAS/OpenMP
-    threads so 5 workers fit the job's 10 CPUs. Results come back in seed order."""
-    if n_workers <= 1 or len(seeds) <= 1:
-        return [fn(s) for s in seeds]
-    from joblib import Parallel, delayed, parallel_backend
+def _fingerprint(res: Path, feats: Path, seeds, reuse: bool, weight_set) -> str:
+    """Short hash of everything a cached router result depends on (file sizes + modification times of the inputs)."""
+    parts = [str(sorted(seeds)), str(reuse), str(weight_set)]
+    for f in [res / "runs_scored.parquet", *sorted(feats.glob("*"))]:
+        st = f.stat()
+        parts.append(f"{f.name}:{st.st_size}:{int(st.st_mtime)}")
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
 
-    with parallel_backend("loky", inner_max_num_threads=max(1, 10 // n_workers)):
-        return Parallel(n_jobs=min(n_workers, len(seeds)))(delayed(fn)(s) for s in seeds)
+
+def _call_limited(fn, seed: int, threads: int):
+    """Run one seed with BLAS/OpenMP capped at `threads` (LightGBM, numpy and sklearn otherwise each start one
+    thread per core of the NODE, oversubscribing the job's 10 CPUs: Ada job 66015 showed 2-3 cores per worker)."""
+    from threadpoolctl import threadpool_limits
+
+    with threadpool_limits(limits=threads):
+        return fn(seed)
+
+
+def run_seeds(fn, seeds: list[int], n_workers: int, cpus: int = 10) -> list:
+    """fn(seed) for every seed; n_workers > 1 uses separate processes (joblib/loky). Results come back in seed order."""
+    threads = max(1, cpus // max(1, min(n_workers, len(seeds))))
+    if n_workers <= 1 or len(seeds) <= 1:
+        return [_call_limited(fn, s, cpus) for s in seeds]
+    from joblib import Parallel, delayed
+
+    return Parallel(n_jobs=min(n_workers, len(seeds)), backend="loky")(delayed(_call_limited)(fn, s, threads) for s in seeds)
 
 
 def add_combined_per_task(picks: pd.DataFrame, tasks: list, n_test: int) -> pd.DataFrame:

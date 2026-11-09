@@ -8,8 +8,8 @@
 #SBATCH --exclude=gnode012          # job 65455: the env silently did not run there
 #SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job C (CPU only, after job B): routers + baselines + oracle, then tables and figures.
-# Each router run skips itself once its headline.csv exists, so a job stopped at 6 h resumes when resubmitted
-# (~3-4 h in all at 5,000 questions: measured on synthetic data at full scale, 7 Nov).
+# Router runs cache each finished router group and skip themselves once headline.csv exists, so a job stopped
+# at 6 h resumes when resubmitted (the full set needs about two jobs at 5,000 questions).
 # Pilot:  sbatch --export=ALL,RAGROUTE_PILOT=1 slurm/ada/jobC_analysis_cpu.sbatch
 # MLP is first in the cut order: MODELS='lr gbdt' sbatch ... drops it.
 set -euo pipefail
@@ -21,15 +21,13 @@ require_py
 step "collect + score the grid (no-op if job B already wrote it)"
 if [ ! -s "$RESULTS_ROOT/runs_scored.parquet" ]; then py -m ragroute.harness.collect; fi
 step "unit tests (incl. the Chroma-dependent ones)"
-py -m pytest -q tests || echo "WARNING: unit tests failed (see above)"
+if [ ! -f "$RESULTS_ROOT/unit_tests_passed" ]; then   # once per run: retries of job C skip the ~7 min suite
+  if py -m pytest -q tests; then date -Is > "$RESULTS_ROOT/unit_tests_passed"; else echo "WARNING: unit tests failed (see above)"; fi
+fi
 step "routers + baselines (LR, GBDT, MLP; all feature sets; 5 seeds; global + per task)"
 if [ ! -s "$RESULTS_ROOT/router/headline.csv" ]; then
-  # A previous job C stopped inside this step (6 h limit; train_eval cannot resume): drop the MLP, first in the
-  # pre-registered cut order (docs/07) and the slowest model, so the retry fits in one job.
-  if [ -f "$RESULTS_ROOT/router_main_attempted" ] && [ -z "${MODELS:-}" ]; then
-    MODELS="lr gbdt"; echo "previous attempt did not finish: MLP router dropped (cut order)"
-  fi
-  touch "$RESULTS_ROOT/router_main_attempted"
+  # ~420 router fits take longer than one 6 h job; train_eval caches every finished router group
+  # (router/cache/<fingerprint>/), so the driver's resubmission continues where the previous job stopped.
   py -m ragroute.router.train_eval --models ${MODELS:-lr gbdt mlp}
 fi
 step "conservative Router B accounting (probe never reused)"
