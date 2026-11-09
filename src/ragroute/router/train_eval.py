@@ -152,6 +152,7 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
     cache_dir = out / "cache" / _fingerprint(res, feats, seeds, reuse, weight_set)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    n_threads = max(1, 10 // max(1, min(n_workers, len(seeds))))  # per worker process; the job has 10 CPUs
     grids = {s: build_grid(runs, meta, s) for s in ("train", "dev", "test")}
     tr, dv, te = grids["train"], grids["dev"], grids["test"]
     configs = tr.config_ids
@@ -225,7 +226,7 @@ def run(cfg: dict, models: list[str], feature_sets: list[str], seeds: list[int],
                     my_curves, my_picks, my_imp = [], [], {}
                     frame, gcols = query_frame(qf, emb, rf, meta, s_tr.qids, seed)
                     cols = [c for g in groups for c in gcols[g]]
-                    model = make_model(model_name, seed)
+                    model = make_model(model_name, seed, threads=n_threads)
                     inter = getattr(model, "needs_interactions", False)
                     Xtr = pair_matrix(frame.loc[s_tr.qids, cols].to_numpy(float), Fc, inter)
                     model.fit(Xtr, s_tr.Q.reshape(-1))

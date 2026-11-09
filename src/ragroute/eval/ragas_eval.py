@@ -43,10 +43,11 @@ def build_items(cfg: dict, n_per_dataset: int) -> pd.DataFrame:
         u = g["qid"].to_numpy()
         qids += list(rng.choice(u, size=min(n_per_dataset, len(u)), replace=False))
     items = test[test["qid"].isin(qids)].merge(qa, on="qid")
-    cache = Path(cfg["paths"]["cache_dir"]) / "generation"
-    ctx = pd.concat([pd.read_parquet(cache / f"{c}.parquet", columns=["qid", "config_id", "retrieved_ids"])
-                     for c in items["config_id"].unique()])
-    items = items.merge(ctx, on=["qid", "config_id"])
+    if "retrieved_ids" not in items.columns:  # runs_scored.parquet already carries them (merging again gave _x/_y)
+        cache = Path(cfg["paths"]["cache_dir"]) / "generation"
+        ctx = pd.concat([pd.read_parquet(cache / f"{c}.parquet", columns=["qid", "config_id", "retrieved_ids"])
+                         for c in items["config_id"].unique()])
+        items = items.merge(ctx, on=["qid", "config_id"])
     corpus = pd.read_parquet(Path(cfg["paths"]["project_dir"]) / "data" / "corpus.parquet", columns=["doc_id", "contents"])
     lookup = dict(zip(corpus["doc_id"], corpus["contents"]))
     items["contexts"] = items["retrieved_ids"].map(lambda ids: [lookup[i] for i in ids])
@@ -92,13 +93,29 @@ def main():
     ap.add_argument("--n-per-dataset", type=int, default=None)
     ap.add_argument("--items", default=None, help="score a prepared item file instead (e.g. the 150 validation items)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--chunk", type=int, default=400, help="items per saved chunk (resume unit)")
     args = ap.parse_args()
     cfg = load_experiment(args.config)
     j = cfg["judge"]
     items = pd.read_parquet(args.items) if args.items else build_items(cfg, args.n_per_dataset or j["ragas_queries_per_dataset"])
     print(f"{len(items)} items to judge")
-    scores = run_ragas(items, j["model"], j["base_url"], cfg["models"]["embedding"])
     out = Path(args.out) if args.out else Path(cfg["paths"]["results_dir"]) / "ragas_scores.parquet"
+    # Resumable: items are judged in chunks and each finished chunk is saved, so a job stopped by the time limit
+    # continues with the next chunk instead of starting over (the test subsample is ~14,000 judge calls).
+    chunk_dir = out.parent / f"{out.stem}_chunks"
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    items = items.sort_values(["config_id", "qid"], kind="mergesort").reset_index(drop=True)
+    parts = []
+    for start in range(0, len(items), args.chunk):
+        f = chunk_dir / f"chunk_{start:06d}_{len(items)}.parquet"
+        if not f.exists():
+            part = run_ragas(items.iloc[start:start + args.chunk].reset_index(drop=True), j["model"], j["base_url"],
+                             cfg["models"]["embedding"])
+            part.to_parquet(f.with_suffix(".tmp"), index=False)
+            f.with_suffix(".tmp").replace(f)
+            print(f"judged items {start}-{min(start + args.chunk, len(items))} of {len(items)}", flush=True)
+        parts.append(pd.read_parquet(f))
+    scores = pd.concat(parts, ignore_index=True)
     scores.to_parquet(out, index=False)
     print(scores.groupby("config_id")[["faithfulness", "answer_relevancy"]].mean().round(3).to_string())
 

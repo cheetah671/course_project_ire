@@ -54,10 +54,11 @@ def sample(cfg: dict) -> pd.DataFrame:
     # attach query, gold, contexts
     qa = pd.read_parquet(Path(cfg["paths"]["project_dir"]) / "data" / "qa.parquet")[["qid", "query", "generation_gt"]]
     items = items.merge(qa, on="qid")
-    cache = Path(cfg["paths"]["cache_dir"]) / "generation"
-    ids = pd.concat([pd.read_parquet(cache / f"{c}.parquet", columns=["qid", "config_id", "retrieved_ids"])
-                     for c in items["config_id"].unique()])
-    items = items.merge(ids, on=["qid", "config_id"])
+    if "retrieved_ids" not in items.columns:  # runs_scored.parquet already carries them (merging again gave _x/_y)
+        cache = Path(cfg["paths"]["cache_dir"]) / "generation"
+        ids = pd.concat([pd.read_parquet(cache / f"{c}.parquet", columns=["qid", "config_id", "retrieved_ids"])
+                         for c in items["config_id"].unique()])
+        items = items.merge(ids, on=["qid", "config_id"])
     corpus = pd.read_parquet(Path(cfg["paths"]["project_dir"]) / "data" / "corpus.parquet", columns=["doc_id", "contents"])
     lookup = dict(zip(corpus["doc_id"], corpus["contents"]))
     items["contexts"] = items["retrieved_ids"].map(lambda x: [lookup[i] for i in x])

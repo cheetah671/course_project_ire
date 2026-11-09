@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH -c 10
 #SBATCH --mem=29G                   # QoS: 10 CPUs x MaxMemPerCPU 3000 MB
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --exclude=gnode[001-008,011-012,017,020-023,025-029,031,033-036,038,040-041]  # = all u22 nodes below gnode042
 #SBATCH -o /home2/%u/ragroute_run/logs/%x_%j.out   # %u = user name (home is /home2/<user>)
 # Job J (1 GPU, after job C): LLM judge (RAGAS faithfulness + answer relevancy).
@@ -24,7 +24,7 @@ JUDGE=$(py -c "from ragroute.config import load_experiment as l; print(l()['judg
 MAXLEN=$(py -c "from ragroute.config import load_experiment as l; print(l()['judge']['max_model_len'])")
 
 step "sample 150 validation items"
-[ -s "$RESULTS_ROOT/judge_validation_items.parquet" ] || py -m ragroute.eval.judge_validation sample
+if [ ! -s "$RESULTS_ROOT/judge_validation_items.parquet" ]; then py -m ragroute.eval.judge_validation sample; fi
 
 step "start judge server: $JUDGE"
 "$MM" run -n ragroute-vllm vllm serve "$JUDGE" --port 8001 --dtype half --max-model-len "$MAXLEN" \
@@ -37,8 +37,10 @@ curl -sf http://localhost:8001/v1/models >/dev/null || { echo "judge server did 
 
 RAGAS="$MM run -n ragroute-ragas python"
 step "judge the 150 validation items"
-[ -s "$RESULTS_ROOT/judge_validation_ragas.parquet" ] || $RAGAS -m ragroute.eval.ragas_eval \
-   --items "$RESULTS_ROOT/judge_validation_items.parquet" --out "$RESULTS_ROOT/judge_validation_ragas.parquet"
+if [ ! -s "$RESULTS_ROOT/judge_validation_ragas.parquet" ]; then
+  $RAGAS -m ragroute.eval.ragas_eval --items "$RESULTS_ROOT/judge_validation_items.parquet" \
+         --out "$RESULTS_ROOT/judge_validation_ragas.parquet"
+fi
 step "judge the test subsample (all 24 configs)"
-[ -s "$RESULTS_ROOT/ragas_scores.parquet" ] || $RAGAS -m ragroute.eval.ragas_eval
+if [ ! -s "$RESULTS_ROOT/ragas_scores.parquet" ]; then $RAGAS -m ragroute.eval.ragas_eval; fi   # resumes by chunk
 step "DONE"; ls -la "$RESULTS_ROOT"/judge_validation_* "$RESULTS_ROOT"/ragas_scores.parquet

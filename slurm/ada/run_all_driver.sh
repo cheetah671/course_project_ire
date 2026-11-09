@@ -19,7 +19,7 @@ log () { echo "[$(date '+%F %T')] $*"; }
 declare -A SCRIPT=([B1]=jobB1_retrieval_gpu.sbatch [K]=jobK_calibrate_gpu.sbatch [B2]=jobB2_generate_gpu.sbatch
                    [K2]=jobK2_index_cost_gpu.sbatch [D]=jobD_checks_gpu.sbatch [C]=jobC_analysis_cpu.sbatch [J]=jobJ_judge_gpu.sbatch)
 declare -A NAME=([B1]=rr-retrB1 [K]=rr-calibrate [B2]=rr-genB2 [K2]=rr-indexK2 [D]=rr-checksD [C]=rr-analysisC [J]=rr-judgeJ)
-declare -A TRIES=([B1]=2 [K]=2 [B2]=4 [K2]=2 [D]=2 [C]=5 [J]=2)
+declare -A TRIES=([B1]=2 [K]=2 [B2]=4 [K2]=2 [D]=2 [C]=5 [J]=3)
 ORDER=(B1 K B2 K2 D C J)
 
 done_marker () {  # success = the step's own completion marker exists

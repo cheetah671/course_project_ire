@@ -40,14 +40,19 @@ class FractionalLogit:
 class GBDT:
     needs_interactions = False
 
-    def __init__(self, seed: int = 0, n_estimators: int = 400, learning_rate: float = 0.05, num_leaves: int = 31):
+    def __init__(self, seed: int = 0, n_estimators: int = 400, learning_rate: float = 0.05, num_leaves: int = 31,
+                 n_jobs: int | None = None):
         try:
             import lightgbm as lgb
 
             self.model = lgb.LGBMRegressor(objective="cross_entropy", n_estimators=n_estimators,
                                            learning_rate=learning_rate, num_leaves=num_leaves, min_child_samples=40,
                                            subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0,
-                                           random_state=seed, verbose=-1)
+                                           random_state=seed, verbose=-1,
+                                           # explicit thread count: LightGBM bundles its own OpenMP, which
+                                           # threadpoolctl does not reach; unset, every worker started one thread
+                                           # per CPU (13 threads x 5 workers on 10 CPUs in Ada job 66234)
+                                           **({"n_jobs": n_jobs} if n_jobs else {}))
             self.backend = "lightgbm"
         except ImportError:  # pragma: no cover
             from sklearn.ensemble import HistGradientBoostingRegressor
@@ -88,5 +93,5 @@ class MLP:
 MODELS = {"lr": FractionalLogit, "gbdt": GBDT, "mlp": MLP}
 
 
-def make_model(kind: str, seed: int):
-    return MODELS[kind](seed=seed)
+def make_model(kind: str, seed: int, threads: int | None = None):
+    return GBDT(seed=seed, n_jobs=threads) if kind == "gbdt" else MODELS[kind](seed=seed)
