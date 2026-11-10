@@ -248,11 +248,28 @@ the most expensive one reaches 0.91.
 ## 7. LLM-judge metrics
 RAGAS faithfulness and answer relevancy were computed with Llama-3.1-8B-Instruct (4-bit AWQ, not from the generators'
 model family) on 150 dev items and on 50 test questions per QA and slot-filling dataset × 24 configurations (4,800 items;
-FEVER answers are bare labels and are scored by accuracy only). The judge produced scores for over 98% of items. Its
-faithfulness score correlates with F1/EM at Spearman 0.39, and it ranks the hybrid, top-10, 7B configurations highest
-(0.70), as F1 does. [[T11: human–human and judge–human agreement on the 150 hand-labelled items, and the EM
-false-negative rate. Under the pre-registered rule, RAGAS is reported only if κ ≥ 0.6 and the Spearman CI lower bound
-exceeds 0.4.]]
+FEVER answers are bare labels and are scored by accuracy only). The judge produced scores for over 98% of items, and its
+faithfulness score correlates with F1/EM at Spearman 0.39.
+
+**Validation (T11).** With the TA's permission, the 150 stratified dev items were labelled by an LLM annotator (Claude)
+instead of by the team, following the annotation guide (docs/05): faithfulness to the passages (0/1/2), relevance (0/1/2)
+and correctness against the gold answers (0/1), with every label checked against the full passages. These are therefore
+judge-versus-LLM-annotator numbers, not human agreement. With one annotator there is no inter-annotator agreement.
+Labels: `annotation/ann_claude_llm.xlsx`; report: `final_results/judge/judge_validation_report.json`.
+
+| Agreement (n = 148 items with a judge score) | Value [95% CI] |
+|---|---|
+| Judge faithfulness vs annotator faithfulness, Spearman | 0.50 [0.35, 0.64] |
+| Judge vs annotator, Cohen's κ (judge ≥ 0.5 vs label 2) | 0.48 [0.34, 0.62] |
+| EM vs annotator correctness, Cohen's κ | 0.65 |
+| EM false-negative rate (annotator: correct, EM = 0) | 26% |
+| Token F1 vs annotator correctness, Spearman | 0.81 |
+
+The judge **fails the pre-registered rule** (κ ≥ 0.6 and Spearman CI lower bound > 0.4), so RAGAS is reported only as a
+diagnostic and plays no part in any conclusion. Answer relevancy could not be validated: the annotator rated 138 of 150
+answers fully relevant, leaving too little variation to correlate. The annotation also quantifies EM's strictness: about
+a quarter of answers judged correct score EM = 0 (for example "Liverpool" for "Liverpool FC", or "1211" for "a year in the
+life of Genghis Khan"), while token F1 tracks correctness closely (0.81). This supports F1, not EM, as the QA router target.
 
 ## 8. Discussion and limitations
 The per-question headroom is real and large, but it is not predictable from the question or from cheap retrieval

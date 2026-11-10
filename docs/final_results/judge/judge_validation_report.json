@@ -1,0 +1,28 @@
+{
+  "n_items_scored": 148,
+  "spearman_faithfulness": [
+    0.5003707810506375,
+    0.35340836011445786,
+    0.6367170156732468
+  ],
+  "pearson_faithfulness": [
+    0.5157956888946645,
+    0.37048205812455404,
+    0.6510741580817118
+  ],
+  "kappa_faithfulness_binary": [
+    0.4834205933682374,
+    0.3377431906614785,
+    0.6173428798727129
+  ],
+  "spearman_relevancy": [
+    NaN,
+    -0.2625897744876867,
+    0.05788225090481077
+  ],
+  "em_vs_human_correct_kappa": 0.6469076894843091,
+  "em_false_negative_rate": 0.25742574257425743,
+  "f1_vs_human_correct_spearman": 0.8069671577637088,
+  "ragas_passes_rule": false,
+  "rule": "kappa >= 0.6 and Spearman CI low > 0.4"
+}

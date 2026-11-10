@@ -18,11 +18,13 @@ configuration (hybrid, k = 10, rerank, 7B); no router beats that configuration o
 but routers match it at up to 37% lower cost and beat the static frontier by 0.04–0.08 at tight budgets; dataset
 identity carries most of the routing value; retrieval signals add nothing once their cost is charged (routing paradox).
 
+**Judge validation (10 Nov):** with the TA's permission the 150 items were labelled by an LLM annotator (Claude),
+`annotation/ann_claude_llm.xlsx`; disclosed as such in report §7. Judge vs annotator: Spearman 0.50, κ 0.48, so RAGAS
+fails the pre-registered rule and stays a diagnostic; EM false-negative rate 26%; F1 vs correctness 0.81.
+
 **Left (team only):**
-1. Label the 150 items in `annotation/judge_validation_to_annotate.csv` (two annotators + adjudication; docs/05 §5),
-   then run the `score` command there (or ask Claude) to fill table T11 / §7 of the report.
-2. Confirm with the professor: three tasks, and the normalisation (own scale per metric, macro over tasks).
-3. Read the final report and submit by Fri 21 Nov.
+1. Confirm with the professor: three tasks, and the normalisation (own scale per metric, macro over tasks).
+2. Read the final report (docs/12_final_report.md / .pdf) and submit by Fri 21 Nov.
 
 Problems met on the way (all fixed and documented in commits): an AutoRAG validation step quadratic in corpus size;
 AutoRAG's BM25 timing used as cost; vLLM out of memory inside AutoRAG's pipeline; threads crashing LightGBM; a node
