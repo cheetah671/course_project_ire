@@ -92,10 +92,17 @@ def _boot(fn, a, b, n=10_000, seed=0):
     return float(fn(a, b)), float(np.quantile(vals, 0.025)), float(np.quantile(vals, 0.975))
 
 
+def _read_table(path) -> pd.DataFrame:
+    """parquet on the cluster; JSON Lines copies in docs/final_results/judge/ (parquet from pyarrow >= 23 does not load
+    in older pyarrow: "Repetition level histogram size mismatch")."""
+    return pd.read_json(path, lines=True) if str(path).endswith((".jsonl", ".json")) else pd.read_parquet(path)
+
+
 def score(ann_paths: list[str], judge_path: str, items_path: str) -> dict:
-    anns = [pd.read_csv(p) for p in ann_paths]
-    items = pd.read_parquet(items_path)
-    judge = pd.read_parquet(judge_path)
+    # Excel sheets from scripts/make_annotation_xlsx.py (sheet "Label") or CSV copies of the annotation template
+    anns = [pd.read_excel(p, sheet_name="Label") if str(p).endswith(".xlsx") else pd.read_csv(p) for p in ann_paths]
+    items = _read_table(items_path)
+    judge = _read_table(judge_path)
     rep = {}
     if len(anns) >= 2:
         a, b = anns[0].set_index("item_id"), anns[1].set_index("item_id").loc[anns[0]["item_id"]]
@@ -133,10 +140,12 @@ def main():
     ap.add_argument("--config", default=None)
     ap.add_argument("--ann", nargs="*", default=[])
     ap.add_argument("--judge", default=None)
+    ap.add_argument("--items", default=None, help="validation items parquet (default: <results>/judge_validation_items.parquet)")
+    ap.add_argument("--out", default=None, help="report path (default: <results>/judge_validation_report.json)")
     args = ap.parse_args()
     cfg = load_experiment(args.config)
     res = Path(cfg["paths"]["results_dir"])
-    items_path = res / "judge_validation_items.parquet"
+    items_path = Path(args.items) if args.items else res / "judge_validation_items.parquet"
     if args.cmd == "sample":
         items = sample(cfg)
         items.to_parquet(items_path, index=False)
@@ -144,7 +153,9 @@ def main():
         print(f"{len(items)} items; strata:\n{items.groupby(['dataset', 'em']).size()}")
     else:
         rep = score(args.ann, args.judge, str(items_path))
-        (res / "judge_validation_report.json").write_text(json.dumps(rep, indent=2))
+        out = Path(args.out) if args.out else res / "judge_validation_report.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(rep, indent=2))
         print(json.dumps(rep, indent=2))
 
 

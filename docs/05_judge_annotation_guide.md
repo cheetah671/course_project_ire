@@ -58,15 +58,19 @@ Free text. Use these tags where they apply: `gold_issue`, `ambiguous_question`, 
   0.65, the judge is near the ceiling of what the labels support.
 
 ## 5. Step by step for the team
-1. Open `annotation/judge_validation_to_annotate.csv` (copied into the repo after job J). Make two copies:
-   `annotation/ann_A.csv` (annotator A) and `annotation/ann_B.csv` (annotator B).
-2. Each annotator fills `faithfulness_label`, `relevance_label`, `correct_label`, `notes`, `annotator_id` in their
-   own copy, alone. Keep every row and the `item_id` column unchanged.
-3. The third person compares the two faithfulness columns and, where they differ, writes the final label in
-   `adjudicated_faithfulness` of **ann_A.csv**.
-4. Run (on Ada, in ~/ragroute_run/code, after `source slurm/ada/env.sh`):
-   `py -m ragroute.eval.judge_validation score --ann annotation/ann_A.csv annotation/ann_B.csv --judge $RESULTS_ROOT/judge_validation_ragas.parquet`
-   This writes `judge_validation_report.json` (table T11) and says whether RAGAS passes the rule below.
+1. **Annotator A** opens `annotation/ann_A.xlsx`; **annotator B** opens `annotation/ann_B.xlsx` (Excel, Google Sheets
+   or LibreOffice). The "Instructions" tab repeats the label rules above. Work alone; do not discuss items.
+2. In the "Label" tab, fill the yellow columns for all 150 rows: `faithfulness_label` (0/1/2), `relevance_label`
+   (0/1/2), `correct_label` (0/1) from the drop-down menus, plus `notes` if useful and your name in `annotator_id`.
+   Do not change `item_id`, reorder or delete rows. Save as .xlsx.
+3. **The third person** puts both files side by side and, for every row where the two `faithfulness_label` values
+   differ, writes the final value (0/1/2) in `adjudicated_faithfulness` of **ann_A.xlsx**.
+4. Run on any laptop with the repo (no Ada needed), from the repo folder:
+   ```
+   python -m ragroute.eval.judge_validation score --ann annotation/ann_A.xlsx annotation/ann_B.xlsx        --items docs/final_results/judge/judge_validation_items.jsonl        --judge docs/final_results/judge/judge_validation_ragas.jsonl        --out docs/final_results/judge/judge_validation_report.json
+   ```
+   (with `PYTHONPATH=src` set, or after `pip install -e .`). It writes table T11 and prints `ragas_passes_rule`.
+   Then fill report §7 (or ask Claude to).
 
 ## 6. Spreadsheet template
 `annotation/judge_validation_template.csv` columns:
