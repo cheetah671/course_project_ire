@@ -1,0 +1,8 @@
+dataset,qtype,n,best,runner_up,best_win_freq,margin,margin_ci,claim_supported
+fever,refutes,88,dense-k3-rr0-qwen7b,dense-k3-rr1-qwen7b,0.2432,0.0,"[-0.034, 0.034]",False
+fever,supports,112,dense-k10-rr1-qwen7b,hybrid-k10-rr0-qwen7b,0.4275,0.0,"[-0.062, 0.062]",False
+hotpotqa,bridge,160,dense-k10-rr1-qwen7b,hybrid-k10-rr0-qwen7b,0.6131,0.012161796536796539,"[-0.041, 0.065]",False
+hotpotqa,comparison,40,hybrid-k10-rr0-qwen7b,hybrid-k10-rr1-qwen7b,0.5518,0.052500000000000005,"[-0.060, 0.168]",False
+nq,single,200,dense-k10-rr0-qwen7b,hybrid-k3-rr1-qwen7b,0.3459,0.0020763305322128865,"[-0.051, 0.056]",False
+triviaqa,single,200,bm25-k10-rr1-qwen7b,hybrid-k10-rr1-qwen7b,0.6816,0.01575324675324675,"[-0.020, 0.051]",False
+zsre,slot,200,hybrid-k10-rr1-qwen7b,hybrid-k10-rr0-qwen7b,0.9669,0.055,"[0.000, 0.110]",False

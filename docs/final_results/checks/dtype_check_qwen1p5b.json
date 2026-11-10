@@ -1,0 +1,16 @@
+[
+  {
+    "config_id": "dense-k3-rr0-qwen1p5b",
+    "n": 1000,
+    "same_text_rate": 0.23,
+    "quality_generation_dtype_float32": 0.86,
+    "quality_generation_dtype_float16": 0.862,
+    "input_tokens_equal_rate": 1.0,
+    "output_tokens_mean_generation_dtype_float32": 3.417,
+    "output_tokens_mean_generation_dtype_float16": 4.196,
+    "seconds_generation_dtype_float32": 136.36599922180176,
+    "gpu_generation_dtype_float32": "NVIDIA GeForce RTX 2080 Ti",
+    "seconds_generation_dtype_float16": 39.67176866531372,
+    "gpu_generation_dtype_float16": "NVIDIA GeForce RTX 2080 Ti"
+  }
+]

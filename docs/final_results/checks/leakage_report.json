@@ -1,0 +1,33 @@
+{
+  "split_sizes": {
+    "dev": {
+      "fever": 200,
+      "hotpotqa": 200,
+      "nq": 200,
+      "triviaqa": 200,
+      "zsre": 200
+    },
+    "test": {
+      "fever": 200,
+      "hotpotqa": 200,
+      "nq": 200,
+      "triviaqa": 200,
+      "zsre": 200
+    },
+    "train": {
+      "fever": 600,
+      "hotpotqa": 600,
+      "nq": 600,
+      "triviaqa": 600,
+      "zsre": 600
+    }
+  },
+  "n_hub_titles": 0,
+  "hub_titles_sample": [],
+  "test_share_any_title_with_train": 0.0,
+  "test_share_nonhub_title_with_train": 0.0,
+  "duplicate_questions_across_splits": 0,
+  "embedding_near_dup_links": 0,
+  "largest_component": 8,
+  "n_components": 4459
+}

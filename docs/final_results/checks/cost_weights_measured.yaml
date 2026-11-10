@@ -1,0 +1,43 @@
+# Written by scripts/calibrate_costs.py from measured timings. Do not edit by hand.
+weights:
+  a_in:
+    qwen1p5b: 0.062841
+    qwen7b: 0.312401
+  a_out:
+    qwen1p5b: 0.246988
+    qwen7b: 2.304476
+  b: 0.0
+  c: 0.917446
+  d: 2.664715
+info:
+  generation_fit:
+    qwen1p5b:
+      a_in: 0.06284091047204136
+      a_out: 0.24698757110823905
+      b: 0.0
+      r2: 0.9991671869658384
+      max_rel_residual: 0.03618663940382143
+      n_batches: 18
+      backend: vllm
+      gpu: NVIDIA GeForce RTX 2080 Ti
+      host: gnode044
+    qwen7b:
+      a_in: 0.312401105782053
+      a_out: 2.304476178567782
+      b: 0.0
+      r2: 0.9877818303387038
+      max_rel_residual: 0.11390866052695486
+      n_batches: 18
+      backend: vllm
+      gpu: NVIDIA GeForce RTX 2080 Ti
+      host: gnode044
+  rerank_source: calibration
+  index_source: calibrate_index
+  index_ms:
+    bm25: 2.1078150204072394
+    dense: 3.221615164540708
+  d_autorag: 954.4303404569627
+  units: GPU-ms per prompt token (a_in), per generated token (a_out), per call (b),
+    per rerank pair (c); wall ms per index query (d)
+  timings_file: /home2/cs4406.07/ragroute_run/calibration/calibration/calibration_timings.jsonl
+  stage_timings_file: /home2/cs4406.07/ragroute_run/data/cache/stage_timings.jsonl

@@ -1,0 +1,7 @@
+{
+  "config_id": "hybrid-k3-rr1-qwen1p5b",
+  "n": 50,
+  "retrieved_ids_agreement": 1.0,
+  "raw_text_agreement": 1.0,
+  "normalised_answer_agreement": 1.0
+}

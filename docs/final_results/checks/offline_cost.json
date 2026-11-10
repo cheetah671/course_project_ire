@@ -1,0 +1,11 @@
+{
+  "n_passages": 500000,
+  "slice": 50000,
+  "chroma_bytes": 1722523870,
+  "bm25_bytes": 223356872,
+  "embed_gpu_ms": 711309.6478721127,
+  "embed_extrapolated": true,
+  "bm25_build_cpu_ms": 471756.3426308334,
+  "bm25_extrapolated": true,
+  "retrieval_trial_wall_s": 15635.061224460602
+}

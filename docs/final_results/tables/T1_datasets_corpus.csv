@@ -1,0 +1,20 @@
+item,task,metric,n,train,dev,test,gold_mapped_pct,qtypes
+fever,verification,accuracy,1000.0,600.0,200.0,200.0,97.7,refutes=503; supports=497
+hotpotqa,qa,token F1,1000.0,600.0,200.0,200.0,98.6,bridge=799; comparison=201
+nq,qa,token F1,1000.0,600.0,200.0,200.0,74.5,single=1000
+triviaqa,qa,token F1,1000.0,600.0,200.0,200.0,79.7,single=1000
+zsre,slot_filling,exact match,1000.0,600.0,200.0,200.0,84.1,slot=1000
+corpus: full_corpus_passages,,,21015324.0,,,,,
+corpus: subcorpus_passages,,,500000.0,,,,,
+corpus: n_mined,,,226275.0,,,,,
+corpus: n_gold_neighbours,,,14792.0,,,,,
+corpus: n_random_fill,,,258933.0,,,,,
+corpus: gold_titles_needed,,,3746.0,,,,,
+corpus: gold_titles_found,,,3361.0,,,,,
+leakage: n_hub_titles,,,0.0,,,,,
+leakage: test_share_any_title_with_train,,,0.0,,,,,
+leakage: test_share_nonhub_title_with_train,,,0.0,,,,,
+leakage: duplicate_questions_across_splits,,,0.0,,,,,
+leakage: embedding_near_dup_links,,,0.0,,,,,
+leakage: largest_component,,,8.0,,,,,
+leakage: n_components,,,4459.0,,,,,

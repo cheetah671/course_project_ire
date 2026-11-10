@@ -1,0 +1,9 @@
+{
+  "quality_fp32": 0.86,
+  "quality_fp16": 0.862,
+  "same_text_rate": 0.23,
+  "out_tok_fp32": 3.417,
+  "out_tok_fp16": 4.196,
+  "rule": "float32 if quality_fp32 - quality_fp16 >= 0.01 else float16",
+  "choice": "float16"
+}

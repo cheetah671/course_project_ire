@@ -1,5 +1,36 @@
 # Progress report
 
+## Update, Tue 10 Nov 2026: full run complete; final report drafted with real results
+**All experiments are finished** (Ada account cs4406.07; driver log ends "ALL STEPS COMPLETE", 9 Nov 20:32).
+
+| Job | What | Result |
+|---|---|---|
+| A | 5 × 1,000 questions; own BM25 index over 21M passages; 500k sub-corpus; grouped split | 0 test–train leakage |
+| B1 | retrieval (BM25, dense, hybrid), rerank, router features, fp16 check | fp16 kept (0.862 vs fp32 0.860) |
+| K, K2 | measured cost weights; index-query cost with Lucene/Chroma (2.7 ms, not AutoRAG's 954 ms) | fit R² 0.999 / 0.988 |
+| B2 | 24 configs × 5,000 questions = 120,000 answers, scored | complete grid |
+| D | equivalence with AutoRAG's pipeline; reruns; token counts | 100% / 100%; 99.74%; 100% |
+| C | routers (LR, GBDT, MLP; 7 feature sets; global + per task; 5 seeds); sensitivity; 13 tables; 8 figures | done in 44 min after fixes |
+| J | Llama-3.1-8B judge on 150 dev items + 4,800 test items; 150-item annotation sheet | > 98% of items scored |
+
+**Main findings** (docs/12_final_report.md, PDF next to it): oracle headroom +0.177 [0.156, 0.199] over the best static
+configuration (hybrid, k = 10, rerank, 7B); no router beats that configuration on quality (best +0.001 [−0.010, 0.013]),
+but routers match it at up to 37% lower cost and beat the static frontier by 0.04–0.08 at tight budgets; dataset
+identity carries most of the routing value; retrieval signals add nothing once their cost is charged (routing paradox).
+
+**Left (team only):**
+1. Label the 150 items in `annotation/judge_validation_to_annotate.csv` (two annotators + adjudication; docs/05 §5),
+   then run the `score` command there (or ask Claude) to fill table T11 / §7 of the report.
+2. Confirm with the professor: three tasks, and the normalisation (own scale per metric, macro over tasks).
+3. Read the final report and submit by Fri 21 Nov.
+
+Problems met on the way (all fixed and documented in commits): an AutoRAG validation step quadratic in corpus size;
+AutoRAG's BM25 timing used as cost; vLLM out of memory inside AutoRAG's pipeline; threads crashing LightGBM; a node
+where the Python env silently did nothing; router training not resumable; LightGBM oversubscribing CPUs; a duplicate
+column in the judge item builders.
+
+---
+
 ## Update, Sat 7 Nov 2026: full run started on account cs4406.07
 The full run moved to a fresh Ada account (cs4406.07). The pilot's account (cs4406.11) is not readable from it,
 so the environments and data were rebuilt from the repo scripts (docs/04, top section, has the exact sequence).
