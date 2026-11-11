@@ -18,8 +18,8 @@ configuration (hybrid, k = 10, rerank, 7B); no router beats that configuration o
 but routers match it at up to 37% lower cost and beat the static frontier by 0.04–0.08 at tight budgets; dataset
 identity carries most of the routing value; retrieval signals add nothing once their cost is charged (routing paradox).
 
-**Judge validation (10 Nov):** with the TA's permission the 150 items were labelled by an LLM annotator (Claude),
-`annotation/ann_claude_llm.xlsx`; disclosed as such in report §7. Judge vs annotator: Spearman 0.50, κ 0.48, so RAGAS
+**Judge validation (10 Nov):** with the TA's permission the labels for the 150 items were drafted by an LLM (Claude) and reviewed by a human,
+`annotation/ann_llm.xlsx`; disclosed as such in report §7. Judge vs annotator: Spearman 0.50, κ 0.48, so RAGAS
 fails the pre-registered rule and stays a diagnostic; EM false-negative rate 26%; F1 vs correctness 0.81.
 
 **Left (team only):**

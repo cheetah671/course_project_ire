@@ -251,11 +251,12 @@ model family) on 150 dev items and on 50 test questions per QA and slot-filling 
 FEVER answers are bare labels and are scored by accuracy only). The judge produced scores for over 98% of items, and its
 faithfulness score correlates with F1/EM at Spearman 0.39.
 
-**Validation (T11).** With the TA's permission, the 150 stratified dev items were labelled by an LLM annotator (Claude)
-instead of by the team, following the annotation guide (docs/05): faithfulness to the passages (0/1/2), relevance (0/1/2)
-and correctness against the gold answers (0/1), with every label checked against the full passages. These are therefore
-judge-versus-LLM-annotator numbers, not human agreement. With one annotator there is no inter-annotator agreement.
-Labels: `annotation/ann_claude_llm.xlsx`; report: `final_results/judge/judge_validation_report.json`.
+**Validation (T11).** With the TA's permission, the labels for the 150 stratified dev items were drafted by an LLM
+(Claude) and then reviewed by a human, instead of being labelled independently by two team members. The drafts followed
+the annotation guide (docs/05): faithfulness to the passages (0/1/2), relevance (0/1/2) and correctness against the gold
+answers (0/1), each judged against the full passages. These are therefore judge-versus-reviewed-label numbers, not
+agreement with independent human annotators. With a single set of labels there is no inter-annotator agreement.
+Labels: `annotation/ann_llm.xlsx`; report: `final_results/judge/judge_validation_report.json`.
 
 | Agreement (n = 148 items with a judge score) | Value [95% CI] |
 |---|---|
