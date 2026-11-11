@@ -7,6 +7,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 import markdown
@@ -36,8 +38,22 @@ def main():
     exe = next((b for b in BROWSERS if Path(b).exists() or shutil.which(b)), None)
     if exe is None:
         raise SystemExit("no Edge/Chrome found")
-    subprocess.run([exe, "--headless", "--disable-gpu", "--no-pdf-header-footer", f"--print-to-pdf={out}",
-                    html.as_uri()], check=True, timeout=120)
+    # A separate profile stops an already-open browser window from taking over the job. The launcher can return
+    # before the PDF is written, so delete the old PDF first and wait until the new one exists and stops growing;
+    # otherwise a stale PDF (or a half-written one) passes silently.
+    out.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
+        subprocess.run([exe, "--headless", "--disable-gpu", "--no-pdf-header-footer", f"--user-data-dir={profile}",
+                        f"--print-to-pdf={out}", html.as_uri()], check=True, timeout=120)
+        last, deadline = -1, time.time() + 120
+        while time.time() < deadline:
+            size = out.stat().st_size if out.exists() else -1
+            if size > 0 and size == last:
+                break
+            last = size
+            time.sleep(1)
+        else:
+            raise SystemExit(f"browser did not finish writing {out}")
     html.unlink()
     print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
 

@@ -26,19 +26,20 @@ generators (and the judge) with vLLM, so the plan is unchanged: 24 configs, no e
 Consequence: vLLM is a hard requirement, so the generators must run on GPUs vLLM supports
 (compute capability ≥ 7.5; see A2 and docs/04).
 
-## C. Open items (also tracked in docs/09_requirements_checklist.md)
+## C. Open items (updated 11 Nov 2026, after the full run; also tracked in docs/09_requirements_checklist.md)
 
 1. ✔ "Bllm" = vLLM (section B).
-2. Ada: ✔ account/partition/QoS limits, scratch, internet (A2, A3). ✔ vLLM-capable GPUs: RTX 2080 Ti on gnode042 onwards (TA, 2026-10-28). The pilot ran llama.cpp on a 1080 Ti; the full run uses vLLM (env `ragroute-vllm`, smoke test `slurm/ada/jobV_vllm_smoke_gpu.sbatch`).
-3. ✔ Deadlines known (A1). Open: mid-submission and final report format (pages, template, demo?).
-4. Judge model: must not be Qwen; pick after the 150-item validation (candidates: a ~7–9B instruct model from another family; a stronger model if API credit exists).
-5. ✔ Tasks (30 Oct): the professor asked for at least 2 (possibly 3) tasks, so FEVER (verification) and zsRE
-   (slot filling) are core, alongside open-domain QA (NQ, HotpotQA, TriviaQA). Routers are trained globally
-   and per task. Open: confirm with the professor that 3 tasks (rather than 2) is what was meant; dropping
-   zsRE is one flag in `configs/experiment.yaml`.
-10. Cost weights are placeholders until job K measures them on the full run's engine and GPU
-   (`slurm/ada/jobK_calibrate_gpu.sbatch` → `configs/cost_weights_measured.yaml`). Must run before the full run.
-6. Pull the reference lists of Wang et al. 2024, AutoRAG, AutoRAG-HP and arXiv:2505.03452, and check who cites them (Semantic Scholar / Google Scholar "cited by"). Add chunking-vs-cost studies found there. **No citation is added without reading the paper.**
-7. Confirm the vLLM version that runs fp16 on Ada's GPUs. ✔ Official floor is compute capability 7.5 (2080 Ti OK, 1080 Ti not); community reports show some SM75 kernel limits, so smoke-test Qwen2.5 in week 1.
-8. ✔ Pyserini index `wikipedia-dpr-100w` exists (21,015,324 docs). Still confirm on first use that hit.docid equals the DPR passage id.
-9. Pre-registered judge acceptance threshold (κ ≥ 0.6 proposed): team sign-off.
+2. ✔ Ada: account/partition/QoS limits, scratch, internet (A2, A3). The full run used vLLM 0.11.2 on RTX 2080 Ti
+   (gnode042 onwards) on account cs4406.07.
+3. ✔ Deadlines known (A1). Open: final report format (pages, template, demo?).
+4. ✔ Judge: `hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4` (not Qwen). Validated on 150 dev items whose labels
+   were LLM-drafted and human-reviewed with the TA's permission; it fails the κ ≥ 0.6 rule, so RAGAS is diagnostic only
+   (docs/12 §7).
+5. ✔ Tasks: 3 tasks (QA: NQ, HotpotQA, TriviaQA; FEVER; zsRE), routers global and per task. **Still open:** confirm with
+   the professor that 3 tasks and the normalisation (each metric on its own 0–1 scale; pooled results also macro over
+   tasks, shown in docs/12 §6.1) are what was meant.
+6. ✔ Reference lists and citing papers checked: 909 citing papers screened (docs/11); BRANE and RCT-MARS added.
+7. ✔ vLLM 0.11.2 runs on the 2080 Ti; fp16 kept for the 1.5B model after the fp32 check (0.862 vs 0.860).
+8. ✔ Superseded: we built our own Lucene BM25 index from the DPR TSV, so hit.docid equals the DPR id by construction.
+9. ✔ Judge acceptance threshold κ ≥ 0.6 and Spearman CI lower bound > 0.4 applied as pre-registered.
+10. ✔ Cost weights measured on the full run's engine and GPU (jobs K, K2; `configs/cost_weights_measured.yaml`).

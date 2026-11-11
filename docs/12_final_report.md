@@ -11,7 +11,8 @@ tasks (open-domain QA, fact verification, slot filling), recording each answer's
 best configuration could be chosen per question, quality would rise from 0.621 to 0.798 (+0.177, 95% CI 0.156–0.199)
 while using less than a sixth of the cost. Routers trained to make that choice, from the question alone or with cheap
 post-retrieval signals and with their own cost charged, did not beat the best fixed configuration on quality (best
-+0.001, CI −0.010 to +0.013). They did match its quality at up to 37% lower marginal cost, and at tight budgets they beat
++0.001, CI −0.010 to +0.013). They did match its quality at about a quarter lower marginal cost (up to 37% if a small
+loss on the task-balanced average is accepted), and at tight budgets they beat
 the static cost–quality frontier by up to 0.08. Most of the saving comes from knowing which dataset a question belongs
 to; post-retrieval signals added nothing once their cost was paid. Large per-query headroom that learned routers cannot
 recover (the "routing paradox" reported for retrieval alone) therefore also holds for full RAG pipelines, which helps
@@ -93,7 +94,8 @@ scored 0.860 and 0.862 on the same 1,000 questions, so fp16 was kept.
 Each per-question score stays on its own [0, 1] scale. Pooled numbers are reported micro (per question), macro over
 datasets and macro over tasks (each task weighs the same). We did not z-score or min-max scores: both change when a
 configuration is added, and per-question min-max is undefined when all configurations tie. FEVER is also reported as
-2·acc − 1 (0 = chance). All comparisons are paired over the same test questions: 10,000 bootstrap resamples stratified
+2·acc − 1 (0 = chance). The router headline (§6.1) shows the per-question and the macro-over-tasks difference side by
+side. All comparisons are paired over the same test questions: 10,000 bootstrap resamples stratified
 by dataset or task, Holm correction within each family of comparisons.
 
 ### 3.5 Cost model
@@ -163,27 +165,36 @@ accuracy 0.887, then uses the best static configuration for that class), cheapes
 ## 6. Results
 
 ### 6.1 Headline: no router beats the best static configuration on quality
-All 5,000 test questions, routers trained on all tasks, λ chosen on dev (T4):
+All 1,000 test questions (200 per dataset), routers trained on all tasks, λ chosen on dev (T4). The Δ columns are
+per question (micro, which here equals macro over datasets because every dataset has 200 test questions); the last
+column is macro over tasks, the normalised view in which QA, verification and slot filling each weigh one third:
 
-| Router (global) | Iso-cost: Δ quality [95% CI] | its cost saving | Iso-quality: cost saving | Δ quality [95% CI] |
-|---|---|---|---|---|
-| A, question only (LR) | −0.004 [−0.019, +0.012] | 18% | 22% | −0.009 [−0.024, +0.007] |
-| A, without question embedding (LR) | **+0.001 [−0.010, +0.013]** | 12% | 13% | +0.000 [−0.012, +0.012] |
-| B, + retrieval signals (LR) | −0.003 [−0.019, +0.013] | 26% | 26% | −0.003 [−0.019, +0.012] |
-| A (GBDT) | −0.009 [−0.022, +0.004] | 23% | 24% | −0.011 [−0.024, +0.002] |
-| B (GBDT) | −0.012 [−0.025, +0.001] | 26% | 28% | −0.012 [−0.026, +0.001] |
-| Dataset identity only (LR) | −0.010 [−0.025, +0.005] | 37% | **37%** | −0.010 [−0.025, +0.005] |
-| Retrieval signals only (LR) | −0.001 [−0.013, +0.011] | 12% | 37% | −0.015 [−0.032, +0.001] |
-| MLP routers with question or retrieval features | −0.044 to −0.079 (Holm p = 0.004) | | | |
+| Router (global) | Iso-cost: Δ quality [95% CI] | its cost saving | Iso-quality: cost saving | Δ quality [95% CI] | Iso-cost, macro over tasks: Δ [95% CI] |
+|---|---|---|---|---|---|
+| A, question only (LR) | −0.004 [−0.019, +0.012] | 18% | 22% | −0.009 [−0.024, +0.007] | −0.012 [−0.032, +0.006] |
+| A, without question embedding (LR) | **+0.001 [−0.010, +0.013]** | 12% | 13% | +0.000 [−0.012, +0.012] | **−0.005 [−0.017, +0.007]** |
+| B, + retrieval signals (LR) | −0.003 [−0.019, +0.013] | 26% | 26% | −0.003 [−0.019, +0.012] | −0.011 [−0.031, +0.009] |
+| A (GBDT) | −0.009 [−0.022, +0.004] | 23% | 24% | −0.011 [−0.024, +0.002] | −0.022 [−0.039, −0.005] |
+| B (GBDT) | −0.012 [−0.025, +0.001] | 26% | 28% | −0.012 [−0.026, +0.001] | −0.025 [−0.043, −0.007] |
+| Dataset identity only (LR) | −0.010 [−0.025, +0.005] | 37% | **37%** | −0.010 [−0.025, +0.005] | −0.014 [−0.029, −0.001] |
+| Retrieval signals only (LR) | −0.001 [−0.013, +0.011] | 12% | 37% | −0.015 [−0.032, +0.001] | −0.004 [−0.020, +0.012] |
+| MLP routers with question or retrieval features | −0.044 to −0.079 (Holm p = 0.004) | | | | −0.048 to −0.085 |
 
-The best static configuration scores 0.621 at a cost of 521. No router improves on it. After Holm correction no
-global LR or GBDT router differs significantly from it (two GBDT variants are 0.013–0.019 lower before correction), and
-the share of the oracle gap they close lies between −0.11 and +0.006 (Figure 2). The MLP routers that use question or
-retrieval features are significantly worse; with squared loss on mostly 0/1 targets they overfit. Per-task LR and GBDT
-routers, combined over all test questions, are slightly worse than the global ones (−0.009 to −0.022).
+The best static configuration scores 0.621 at a cost of 521. No router improves on it, per question or macro over
+tasks. Per question, after Holm correction no global LR or GBDT router differs significantly from it (two GBDT variants
+are 0.013–0.019 lower before correction), and the share of the oracle gap they close lies between −0.11 and +0.006
+(Figure 2). Macro over tasks every router is lower still, because the routers lose on FEVER and zsRE and gain slightly
+on QA (Router B (GBDT): −0.044, −0.037 and +0.007; T6), and the two non-QA tasks weigh two thirds of the macro average
+instead of two fifths of the per-question one: the GBDT routers fall 0.022–0.025 below the best static configuration with intervals that
+exclude zero, and so does the dataset-identity router, narrowly (these macro intervals are not Holm-adjusted). The MLP
+routers that use question or retrieval features are significantly worse on both views; with squared loss on mostly 0/1
+targets they overfit. Per-task LR and GBDT routers, combined over all test questions, are slightly worse than the global
+ones (−0.009 to −0.022).
 
-What the routers do deliver is the same quality for less: Router B (LR) saves 26% of marginal cost and the
-dataset-identity router saves 37%, with no significant quality loss.
+What the routers do deliver is nearly the same quality for less. Per question, Router B (LR) saves 26% of marginal cost
+and the dataset-identity router saves 37%, with no significant quality loss. Macro over tasks, the dataset-identity
+router's 37% saving costs a small but significant 0.014; Router B (LR) at 26% and Router A without the embedding at
+12–13% remain within noise of the best static configuration on both views.
 
 ![Figure 2: share of the oracle gap closed, by feature set and model](figures/final/F6_ablation_gap_closed.png)
 
@@ -218,8 +229,8 @@ the most expensive one reaches 0.91.
   other everywhere, with overlapping intervals, after the probe's two index queries are charged. This matches
   Arabzadeh et al. (2026), who find cheap pre-retrieval predictors often match post-retrieval ones for RAG.
 * **Dataset identity carries most of the routing value (H4 supported).** The dataset-only router gives the largest
-  saving at matched quality (37%) with quality as close to the best static configuration as any learned router, and
-  removing dataset identity lowers the LR routers' quality (A −0.004 → −0.009; B −0.003 → −0.008; for GBDT the change is
+  saving at matched quality (37%), within noise of the best static configuration per question (−0.010) though 0.014
+  below it macro over tasks, and removing dataset identity lowers the LR routers' quality (A −0.004 → −0.009; B −0.003 → −0.008; for GBDT the change is
   within noise).
 * **Gains do not concentrate in multi-hop questions (H3 not supported).** Router B (GBDT) against the best static
   configuration (T6): HotpotQA −0.003 [−0.030, +0.022]; NQ +0.027 [+0.005, +0.051] (Holm p = 0.08); FEVER −0.044
@@ -289,10 +300,13 @@ to published numbers, and dense retrieval did not mine its own hard negatives. B
 and the larger one is 4-bit quantised. The data is English Wikipedia only. EM is strict for zsRE. The cost weights belong
 to one GPU type and engine, and BM25 index time is CPU time, mixed into GPU-millisecond units. The budget comparison in
 §6.2 reads points off test curves, so it is descriptive; the dev-selected comparisons in §6.1 are the tested claims.
+Wall-clock latency (planned as a secondary measure: p50/p95 over repeats in one session, `eval/latency.py`) was not
+run; it was first in our pre-agreed cut order. Cost is therefore reported only as exact counts weighted by measured
+GPU time per unit, not as end-to-end seconds per query.
 
 ## 9. Conclusion
 Running all 24 configurations on all 5,000 questions shows a large oracle headroom (+0.177) that learned routers do not
-convert into quality. Routers can, however, match the best fixed configuration at about a quarter to a third less cost,
+convert into quality. Routers can, however, match the best fixed configuration at about a quarter less cost,
 and beat the static frontier at tight budgets, mostly by using dataset identity and choosing the generator size. Charged
 at their real cost, post-retrieval signals add nothing over the question.
 

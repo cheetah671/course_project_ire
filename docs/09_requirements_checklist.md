@@ -1,6 +1,7 @@
 # Deliverable 8: Requirements checklist and open items
 
-Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation or pending a VERIFY · ⏳ needs cluster results.
+Status: ✅ satisfied · 🟡 satisfied with a stated deviation · ❌ not done (stated in the final report).
+Updated 11 Nov 2026 after the full run (docs/12_final_report.md); every ⏳ from before the run is resolved below.
 
 ## Ground rules
 | Requirement | Where | Status |
@@ -14,14 +15,14 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | Requirement | Where | Status |
 |---|---|---|
 | Every config on every query → oracle labelling | docs/02 D6, D19; `harness/run_stages.py`, `collect.py`, `oracle.py` | ✅ |
-| RQ; (i) oracle ceiling, (ii) Router A, (iii) Router B, on the Pareto frontier vs best static | docs/01 §3; T3/T4; F2 | ✅ ⏳ |
+| RQ; (i) oracle ceiling, (ii) Router A, (iii) Router B, on the Pareto frontier vs best static | docs/01 §3; T3/T4; F2; docs/12 §4, §6 | ✅ full run: headroom +0.177; no router beats best static on quality |
 | Generation-side cost and post-retrieval signals as angles | docs/02 D17, D21–D22 | ✅ |
 | Write-up planned for both outcomes | docs/01 abstract W/S; docs/06 §C.9; T3 label statistics + held-out T4 | ✅ |
 
 ## 2. Related work
 | Requirement | Where | Status |
 |---|---|---|
-| Position against Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452, Adaptive-RAG, METIS, RAGAS, LegalBench-RAG, chunking-vs-cost | docs/01 §2 | ✅ bibliographic details of all 8 checked 2026-10-27; 🟡 chunking-vs-cost citations TODO |
+| Position against Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452, Adaptive-RAG, METIS, RAGAS, LegalBench-RAG, chunking-vs-cost | docs/01 §2; docs/11; docs/12 §2 | ✅ bibliographic details checked; citation search over 909 papers (docs/11); BRANE and RCT-MARS added |
 | Justify running the full grid despite AutoRAG-HP | docs/01 §2 (AutoRAG-HP row); docs/02 D12 | ✅ |
 | Reminder: pull reference lists of the first four papers and check who cites them | docs/00 §C.6; docs/01 §2; docs/07 "All" | ✅ |
 | Do not invent citations | Only listed works plus original dataset/tool papers, all VERIFY | ✅ |
@@ -31,27 +32,27 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 |---|---|---|
 | NQ-open + HotpotQA over a stated Wikipedia dump and passage format | docs/02 D1; `configs/experiment.yaml` | ✅ URL and passage count verified |
 | 1–2 extra datasets, 2-sentence justification each, same index, compute impact | docs/02 D4 (TriviaQA; FEVER and zsRE as tasks 2 and 3; MuSiQue/2Wiki considered) | ✅ |
-| ≥ 2 (possibly 3) tasks (professor); router global and per task (team) | docs/02 D4, D20b; `configs/experiment.yaml`; `router/train_eval.py` | ✅ code; ⏳ full run |
-| Cost weights measured before the full run (team) | docs/02 D17; `harness/calibrate.py`, `scripts/calibrate_costs.py`, `slurm/ada/jobK_calibrate_gpu.sbatch` | ✅ code; ⏳ job K on Ada |
+| ≥ 2 (possibly 3) tasks (professor); router global and per task (team) | docs/02 D4, D20b; `configs/experiment.yaml`; `router/train_eval.py` | ✅ 3 tasks, 5 datasets in the full run; global and per-task routers (docs/12 §6.1) |
+| Cost weights measured before the full run (team) | docs/02 D17; `harness/calibrate.py`, `scripts/calibrate_costs.py`, `slurm/ada/jobK_calibrate_gpu.sbatch` | ✅ jobs K and K2: `configs/cost_weights_measured.yaml`, fit R² 0.999 / 0.988 |
 | Fixed chunking, why, limitation | docs/02 D3 | ✅ |
-| ~1,000 queries/dataset; sampling procedure, seed, split by query | docs/02 D5; `data/prepare_qa.py`, `data/splits.py` | ✅ run on the real datasets: 4 × 1,000 sampled, deterministic, 600/200/200 per dataset |
+| ~1,000 queries/dataset; sampling procedure, seed, split by query | docs/02 D5; `data/prepare_qa.py`, `data/splits.py` | ✅ 5 × 1,000 sampled, deterministic, 600/200/200 per dataset |
 | Leakage check through shared supporting docs | `data/splits.py` (grouped split, fail-fast guards), `leakage_report.json`; tests | ✅ on real data: 293 shared articles found, 0 shared between train and test after grouping |
 
 ## 4. Harness, grid, compute
 | Requirement | Where | Status |
 |---|---|---|
-| AutoRAG directly as harness; YAML; parquet prep; commands | docs/03; `make_autorag_yaml.py`, `build_corpus.py`, `run_stages.py` | ✅ 🟡 equivalence check ⏳ |
+| AutoRAG directly as harness; YAML; parquet prep; commands | docs/03; `make_autorag_yaml.py`, `build_corpus.py`, `run_stages.py` | ✅ equivalence with AutoRAG's own pipeline: 100% passages, 100% answers (job D) |
 | What AutoRAG does not do natively + workarounds (VERIFY) | docs/02 D6 table (checked against 0.3.27 source) | ✅ |
 | 24-config fully crossed grid with named embedding model, fusion, cross-encoder, pool policy, 2 generators, greedy | docs/02 D7–D10; `configs/experiment.yaml` | ✅ |
-| vLLM on Ada; SLURM templates; caching; reproducibility (seeds, versions, GPU type) | `slurm/*`, docs/04 | 🟡 Ada specifics VERIFY |
-| Budget arithmetic → GPU-hours + API reference; effect on judge use and dataset count | docs/02 D12; `scripts/budget.py` | ✅ (assumed throughput; re-run after pilot) |
+| vLLM on Ada; SLURM templates; caching; reproducibility (seeds, versions, GPU type) | `slurm/*`, docs/04 | ✅ vLLM 0.11.2 on RTX 2080 Ti; rerun 99.74% identical answers |
+| Budget arithmetic → GPU-hours + API reference; effect on judge use and dataset count | docs/02 D12; `scripts/budget.py` | ✅ extrapolated from measured pilot times |
 
 ## 5. Metrics and statistics
 | Requirement | Where | Status |
 |---|---|---|
 | Primary EM + token-F1, pre-committed | docs/02 D13; `eval/metrics.py` | ✅ |
-| Metric per dataset; normalisation across metrics with justification and pitfalls | docs/02 D14 | ✅ |
-| RAGAS secondary; judge validation on ~150 items (correlation, κ); subsample; protocol + spreadsheet | docs/02 D15; docs/05; `annotation/judge_validation_template.csv`; `eval/judge_validation.py`, `eval/ragas_eval.py` | ✅ ⏳ |
+| Metric per dataset; normalisation across metrics with justification and pitfalls | docs/02 D14; docs/12 §3.4, §6.1 (macro-over-tasks column) | ✅ |
+| RAGAS secondary; judge validation on ~150 items (correlation, κ); subsample; protocol + spreadsheet | docs/02 D15; docs/05; `annotation/ann_llm.xlsx`; `eval/judge_validation.py`, `eval/ragas_eval.py` | 🟡 done; labels LLM-drafted and human-reviewed with the TA's permission (docs/12 §7). Judge fails the rule (κ 0.48), so RAGAS is diagnostic only |
 | Seeds, variance, 95% CIs, paired bootstrap (10k, code) for every claim | docs/02 D16; `stats/bootstrap.py`; `router/train_eval.py::headline_table` | ✅ |
 | Per-question-type best-config claims backed by bootstrap CIs | `best_config_stability`, T7 | ✅ |
 
@@ -61,7 +62,7 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | Offline (embedding, index build time/size) vs marginal (index queries, rerank pairs, tokens, calls), reported separately | docs/02 D17; `cost.py`; `scripts/record_offline_cost.py`; T2, T9 | ✅ |
 | Amortisation factor + sensitivity | `cost_weights.yaml` (1e3–1e6); T9, F8 | ✅ |
 | Scalar cost a·tokens + b·calls + c·rerank + d·index, documented weights, weight sensitivity | `cost.py`, `cost_weights.yaml`, T8 | 🟡 deviation: `a` is generator-specific and split into input/output (reason in D17); the spec's form is one sensitivity set |
-| Latency secondary: p50/p95, repeats, randomised order, same node/session only | docs/02 D18; `eval/latency.py`; `slurm/06_latency.sbatch`; `latency_summary` refuses mixed sessions | ✅ |
+| Latency secondary: p50/p95, repeats, randomised order, same node/session only | docs/02 D18; `eval/latency.py`; `slurm/06_latency.sbatch`; `latency_summary` refuses mixed sessions | ❌ code only, not run (first in the cut order); stated in docs/12 §8 |
 
 ## 7. Router
 | Requirement | Where | Status |
@@ -72,7 +73,7 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | Router A (question only) | feature sets `A`, `A_noDS`, `A_noEmb` | ✅ |
 | Router B (+ score distribution, gaps, entropy, BM25-vs-dense overlap, lexical overlap), with its cost charged | `features/retrieval_features.py`; `cost.router_overhead` (reuse and no-reuse) | ✅ |
 | Baselines: best static, best static under budget, cheapest, random, oracle, Adaptive-RAG-style; METIS conceptual | docs/02 D23; `router/train_eval.py`; docs/01 §5.4 | ✅ (+ per-dataset static) |
-| Held-out test by query; Pareto frontier with all 24 statics + routers; breakdown by dataset and type; paired bootstrap vs best static; ablations (feature groups, model, λ); honest reporting | docs/02 D24; T4–T7; F2, F3, F5 | ✅ ⏳ |
+| Held-out test by query; Pareto frontier with all 24 statics + routers; breakdown by dataset and type; paired bootstrap vs best static; ablations (feature groups, model, λ); honest reporting | docs/02 D24; T4–T7; F2, F3, F6; docs/12 §6 | ✅ |
 
 ## 8. Deliverables
 | # | Deliverable | Where |
@@ -87,15 +88,15 @@ Status: ✅ satisfied in the plan/code · 🟡 satisfied with a stated deviation
 | 8 | This checklist + open items | docs/09 |
 | — | "Bllm" interpretations | docs/00 §B |
 
-## Open items
+## Open items (as of 11 Nov 2026)
 1. ✔ "Bllm" = vLLM (docs/00 §B).
-2. Ada: GPU type, account/partition, wall-time limit, scratch paths, `--exclusive`, internet on compute nodes.
-3. Deadline and report format.
-4. Judge model choice (non-Qwen) and the κ threshold sign-off.
-5. ✔ FEVER and zsRE in (3 tasks). Open: confirm with the professor that 3 tasks (not 2) was meant.
-6. Reference lists and citing papers of Wang et al., AutoRAG, AutoRAG-HP, arXiv:2505.03452; chunking-vs-cost papers. (Bibliographic details of the 8 core papers are now verified.)
-7. vLLM version that runs fp16 on Ada GPUs; Qwen2.5 fp16 sanity check. (Floor verified: compute capability ≥ 7.5, so no 1080 Ti.)
-8. Pyserini docid format (index name verified).
-9. Measured cost weights: job K before the full run (code done 30 Oct). Pilot generation times already
-   replace the budget assumptions (`scripts/budget.py`, measured extrapolation).
-10. ✔ Dataset ids, field names and split sizes verified; loaders run on the real data.
+2. ✔ Ada: RTX 2080 Ti nodes, 6 h limit, scratch and internet (docs/00 A2, A3; docs/04).
+3. Final report format (pages, template, demo?): team to confirm. Deadline Fri 21 Nov 2026.
+4. ✔ Judge: Llama-3.1-8B-Instruct (AWQ); κ ≥ 0.6 rule applied, judge failed it (docs/12 §7).
+5. Confirm with the professor that 3 tasks and the normalisation (own 0–1 scale per metric; macro over tasks) are what
+   was meant. Only the team can do this.
+6. ✔ Citation search over 909 papers (docs/11).
+7. ✔ vLLM 0.11.2; fp16 kept for the 1.5B model (0.862 vs fp32 0.860).
+8. ✔ Own Lucene BM25 index built from the DPR TSV, so hit.docid equals the DPR id by construction (`data/dpr_to_jsonl.py`).
+9. ✔ Measured cost weights (jobs K, K2).
+10. ✔ Datasets verified; loaders run on the real data.
