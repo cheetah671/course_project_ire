@@ -44,9 +44,8 @@ def _write(path: str, row: dict) -> None:
     print(row, flush=True)
 
 
-def bench_bm25(cfg, timings: str, n: int, repeats: int, workdir: Path) -> None:
-    from pyserini.search.lucene import LuceneSearcher
-
+def subcorpus_lucene_index(cfg, workdir: Path, threads: int = 4) -> Path:
+    """Lucene index over the run's own 500k-passage sub-corpus (AutoRAG corpus.parquet); built once per workdir."""
     jsonl, index = workdir / "subcorpus_jsonl", workdir / "subcorpus_lucene"
     if not (index / "_DONE").exists():
         jsonl.mkdir(parents=True, exist_ok=True)
@@ -56,9 +55,15 @@ def bench_bm25(cfg, timings: str, n: int, repeats: int, workdir: Path) -> None:
                 f.write(json.dumps({"id": i, "contents": c}, ensure_ascii=False) + "\n")
         subprocess.run([sys.executable, "-m", "pyserini.index.lucene", "--collection", "JsonCollection",
                         "--input", str(jsonl), "--index", str(index), "--generator", "DefaultLuceneDocumentGenerator",
-                        "--threads", "4"], check=True)
+                        "--threads", str(threads)], check=True)
         (index / "_DONE").write_text("ok")
-    searcher = LuceneSearcher(str(index))
+    return index
+
+
+def bench_bm25(cfg, timings: str, n: int, repeats: int, workdir: Path) -> None:
+    from pyserini.search.lucene import LuceneSearcher
+
+    searcher = LuceneSearcher(str(subcorpus_lucene_index(cfg, workdir)))
     qs = _questions(cfg, n)
     for q in qs[:20]:  # warm-up (JIT, page cache), discarded
         searcher.search(q, k=POOL)

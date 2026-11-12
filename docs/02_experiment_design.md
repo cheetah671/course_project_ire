@@ -347,9 +347,12 @@ Reranker: 3 retrievers × 20 pairs × 4,000 queries = 240,000 pairs once; minute
 ### D18. Latency (secondary)
 p50/p95 of end-to-end per-query latency (batch size 1) over 3 repeats of 200 test queries, config order
 randomised per repeat, warm-up discarded, both generators in **one SLURM job on one node**
-(`eval/latency.py`, `slurm/06_latency.sbatch`). Rows carry session id, host and GPU; the table code
-refuses to mix sessions. Caveat: AutoRAG BM25 is pure-Python rank_bm25, so its latency is not
-representative of production BM25 (Lucene).
+(`eval/latency.py`, `slurm/ada/jobL_latency_gpu.sbatch`). Rows carry session id, host and GPU; the table code
+refuses to mix sessions. **As run (12 Nov 2026, Ada job 70588, gnode090):** retrieval is timed with standard engines,
+not AutoRAG's modules (its BM25 is pure-Python rank_bm25, ~1 s per question, which times the harness): Lucene BM25 over
+the 500k sub-corpus (env ragroute-mining, a first step of the same job), bge-base + Chroma for dense, both plus RRF
+for hybrid; then the cross-encoder over the 20-passage pool and one vLLM chat request with the main run's exact
+prompt. 200 test questions = 40 per dataset (all three tasks). Results: T10, report §6.4.
 
 ---
 

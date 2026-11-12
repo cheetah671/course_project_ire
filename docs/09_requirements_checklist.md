@@ -62,7 +62,7 @@ Updated 11 Nov 2026 after the full run (docs/12_final_report.md); every ⏳ from
 | Offline (embedding, index build time/size) vs marginal (index queries, rerank pairs, tokens, calls), reported separately | docs/02 D17; `cost.py`; `scripts/record_offline_cost.py`; T2, T9 | ✅ |
 | Amortisation factor + sensitivity | `cost_weights.yaml` (1e3–1e6); T9, F8 | ✅ |
 | Scalar cost a·tokens + b·calls + c·rerank + d·index, documented weights, weight sensitivity | `cost.py`, `cost_weights.yaml`, T8 | 🟡 deviation: `a` is generator-specific and split into input/output (reason in D17); the spec's form is one sensitivity set |
-| Latency secondary: p50/p95, repeats, randomised order, same node/session only | docs/02 D18; `eval/latency.py`; `slurm/06_latency.sbatch`; `latency_summary` refuses mixed sessions | ❌ code only, not run (first in the cut order); stated in docs/12 §8 |
+| Latency secondary: p50/p95, repeats, randomised order, same node/session only | docs/02 D18; `eval/latency.py`; `slurm/ada/jobL_latency_gpu.sbatch`; `latency_summary` refuses mixed sessions | ✅ Ada job 70588: T10, docs/12 §6.4 |
 
 ## 7. Router
 | Requirement | Where | Status |

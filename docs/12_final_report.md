@@ -251,6 +251,15 @@ the most expensive one reaches 0.91.
 * **Amortisation (T9, Figure 5).** Dense and hybrid configurations carry the cost of embedding the corpus. At 1,000
   questions per index build they cost about 6× a BM25 configuration (859 vs 145 cost units per question); at 10,000
   about 1.5×; from 100,000 questions the offline cost is negligible.
+* **Latency (secondary, T10).** One job on one RTX 2080 Ti: 200 test questions (40 per dataset) × 24 configurations ×
+  3 repeats, one question at a time, configuration order shuffled in every repeat, warm-up discarded. Median end-to-end
+  time is 0.08–0.22 s for the 1.5B configurations and 0.56–0.95 s for the 7B ones (p95 up to 0.34 s and 1.70 s); the
+  best static configuration takes 0.95 s (p95 1.67 s). Latency ranks the 24 configurations almost exactly as the
+  counted cost does (Spearman 0.997), and generation is 84% of the median time. The 7B model takes 4.9× the time of the
+  1.5B one (4.4× the cost) and the reranker adds 0.05 s (+12%; +10% cost). The one difference: ten passages instead of
+  three take 1.5× the time but 2.7× the counted cost, probably because a single prompt is processed in one fast pass,
+  while the cost weights price prompt tokens by GPU time measured under batched serving. Retrieval itself is small:
+  2 ms for BM25 (Lucene), 33 ms for dense or hybrid (question encoding plus Chroma lookup).
 
 ![Figure 4: cost-weight sensitivity](figures/final/F8_weight_sensitivity.png)
 
@@ -300,9 +309,8 @@ to published numbers, and dense retrieval did not mine its own hard negatives. B
 and the larger one is 4-bit quantised. The data is English Wikipedia only. EM is strict for zsRE. The cost weights belong
 to one GPU type and engine, and BM25 index time is CPU time, mixed into GPU-millisecond units. The budget comparison in
 §6.2 reads points off test curves, so it is descriptive; the dev-selected comparisons in §6.1 are the tested claims.
-Wall-clock latency (planned as a secondary measure: p50/p95 over repeats in one session, `eval/latency.py`) was not
-run; it was first in our pre-agreed cut order. Cost is therefore reported only as exact counts weighted by measured
-GPU time per unit, not as end-to-end seconds per query.
+Latency comes from one session on one shared node (other users' jobs may run on the same machine), with BM25 timed in
+a separate step of the same job; it is a secondary check and no conclusion rests on it.
 
 ## 9. Conclusion
 Running all 24 configurations on all 5,000 questions shows a large oracle headroom (+0.177) that learned routers do not
@@ -312,7 +320,7 @@ at their real cost, post-retrieval signals add nothing over the question.
 
 ## Appendix
 * A1 Validity: `final_results/checks/` (equivalence, greedy reproducibility, token counts, fp16 check, leakage report).
-* A2 All tables T1–T9 as CSV: `final_results/tables/`. Router headline with every policy and mode: `final_results/router_headline.csv`.
+* A2 All tables T1–T10 as CSV: `final_results/tables/` (T10: latency, Ada job 70588). Router headline with every policy and mode: `final_results/router_headline.csv`.
 * A3 Measured cost weights: `final_results/checks/cost_weights_measured.yaml`.
 * A4 Design decisions D1–D24: docs/02. Annotation guide: docs/05. Literature search: docs/11.
 * A5 Environment: vLLM 0.11.2, torch 2.9.0 (CUDA 12.8), AutoRAG 0.3.27, ragas 0.2.15, RTX 2080 Ti (Ada, IIIT Hyderabad).

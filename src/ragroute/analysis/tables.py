@@ -132,10 +132,10 @@ def offline_vs_marginal(runs: pd.DataFrame, offline: dict, factors) -> pd.DataFr
 
 
 def latency_summary(lat: pd.DataFrame) -> pd.DataFrame:
-    if lat["session_id"].nunique() > 1:
-        raise ValueError("latency rows from >1 session: never compare timings across sessions")
-    return (lat.groupby("config_id")["t_total"].quantile([0.5, 0.95]).unstack()
-            .rename(columns={0.5: "p50_s", 0.95: "p95_s"}).reset_index())
+    """T10; refuses rows from more than one session. Same table as `ragroute.eval.latency summarise`."""
+    from ragroute.eval.latency import summarise_rows
+
+    return summarise_rows(lat)
 
 
 METRIC = {"qa": "token F1", "verification": "accuracy", "slot_filling": "exact match"}
