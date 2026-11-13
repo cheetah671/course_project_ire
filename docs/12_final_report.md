@@ -86,9 +86,9 @@ configuration, vLLM 0.11.2 on one RTX 2080 Ti. AutoRAG keeps only the best modul
 of the grid empty, so we call its modules stage by stage and cache each stage.
 
 **Validity checks.** Two configurations run through AutoRAG's own end-to-end pipeline on 50 questions each gave 100%
-identical retrieved passages and 100% identical answers. Re-running a configuration on all 5,000 questions gave 99.74%
-identical answers. Our input-token counts equalled vLLM's for both generators (100%). For the 1.5B model, fp32 and fp16
-scored 0.860 and 0.862 on the same 1,000 questions, so fp16 was kept.
+identical retrieved passages and 100% identical answers. Re-running one configuration (1.5B, dense, top-3, no reranker)
+on all 5,000 questions gave 99.74% identical answers. Our input-token counts equalled vLLM's for both generators (100%).
+For the 1.5B model, fp32 and fp16 scored 0.860 and 0.862 on the same 1,000 FEVER questions, so fp16 was kept.
 
 ### 3.4 Metrics, normalisation and statistics
 Each per-question score stays on its own [0, 1] scale. Pooled numbers are reported micro (per question), macro over
@@ -141,7 +141,8 @@ and the runner-up configuration differ by less than their CI.
 
 ![Figure 1: cost–quality Pareto, all test questions](figures/final/F2_pareto_test.png)
 
-*Figure 1. Test cost–quality curves: the 24 static configurations (grey), the static frontier, baselines, Router A
+*Figure 1. Test cost–quality curves: the 24 static configurations (grey), the static frontier (configurations chosen on
+train), baselines, Router A
 (question), Router B (+retrieval signals) and the oracle. Router curves average five seeds.*
 
 ## 5. Routing method
@@ -189,7 +190,7 @@ instead of two fifths of the per-question one: the GBDT routers fall 0.022–0.0
 exclude zero, and so does the dataset-identity router, narrowly (these macro intervals are not Holm-adjusted). The MLP
 routers that use question or retrieval features are significantly worse on both views; with squared loss on mostly 0/1
 targets they overfit. Per-task LR and GBDT routers, combined over all test questions, are slightly worse than the global
-ones (−0.009 to −0.022).
+ones: −0.009 to −0.022 against the best static configuration, against +0.001 to −0.019 for the global routers.
 
 What the routers do deliver is nearly the same quality for less. Per question, Router B (LR) saves 26% of marginal cost
 and the dataset-identity router saves 37%, with no significant quality loss. Macro over tasks, the dataset-identity
@@ -243,14 +244,17 @@ the most expensive one reaches 0.91.
 * **Cost weights.** Over 500 random perturbations of the weights (each up to ×/÷ 4), the cost ranking of the 24
   configurations keeps a median Kendall τ of 0.95 with the measured weights, and the static frontier keeps a median
   Jaccard overlap of 0.90 (Figure 4). Re-running Routers A and B under three other weight sets (tokens only,
-  parameter-scaled, API-price-like) leaves every conclusion unchanged: no quality gain, 16–31% cost saving (T8b). Pricing
+  parameter-scaled, API-price-like) leaves the main conclusions unchanged: no router gains quality, and savings stay at
+  16–31% (T8b). Router B (GBDT) falls slightly but significantly below the best static configuration under two of the
+  three sets (−0.013 to −0.015). Pricing
   an index query at AutoRAG's 954 ms shrinks Router B's saving from 26% to 4%, because its probe becomes expensive: the
   measured index cost matters.
 * **Chance-corrected FEVER.** Scoring FEVER as 2·acc − 1 doubles its weight in task-macro numbers but leaves the
   headline unchanged (T4c).
 * **Amortisation (T9, Figure 5).** Dense and hybrid configurations carry the cost of embedding the corpus. At 1,000
   questions per index build they cost about 6× a BM25 configuration (859 vs 145 cost units per question); at 10,000
-  about 1.5×; from 100,000 questions the offline cost is negligible.
+  about 1.5×; from 100,000 questions the offline cost is negligible. Only GPU time is amortised; the BM25 index build
+  (472 CPU-seconds) is not, so this comparison overstates the offline-cost gap between dense and BM25 configurations.
 * **Latency (secondary, T10).** One job on one RTX 2080 Ti: 200 test questions (40 per dataset) × 24 configurations ×
   3 repeats, one question at a time, configuration order shuffled in every repeat, warm-up discarded. Median end-to-end
   time is 0.08–0.22 s for the 1.5B configurations and 0.56–0.95 s for the 7B ones (p95 up to 0.34 s and 1.70 s); the
@@ -306,7 +310,11 @@ features can recover the headroom, and at what cost, is the natural next step.
 
 **Limitations.** Chunking is fixed. We search a 500k-passage sub-corpus, so absolute retrieval scores are not comparable
 to published numbers, and dense retrieval did not mine its own hard negatives. Both generators come from one family
-and the larger one is 4-bit quantised. The data is English Wikipedia only. EM is strict for zsRE. The cost weights belong
+and the larger one is 4-bit quantised. The fp16 check covered the 1,000 FEVER questions only. On QA, the 1.5B model
+gives longer answers than the 7B (10 vs 6 tokens on NQ); a pilot comparison with llama.cpp suggests this costs the 1.5B
+about 0.025 F1 under vLLM, so the 7B advantage may be slightly overstated, though this is unlikely to change the routing
+conclusions. NQ, HotpotQA, TriviaQA, FEVER and zsRE are public, so Qwen may have seen some questions in training; this
+affects every retrieval choice equally but may inflate the 7B model's advantage. The data is English Wikipedia only. EM is strict for zsRE. The cost weights belong
 to one GPU type and engine, and BM25 index time is CPU time, mixed into GPU-millisecond units. The budget comparison in
 §6.2 reads points off test curves, so it is descriptive; the dev-selected comparisons in §6.1 are the tested claims.
 Latency comes from one session on one shared node (other users' jobs may run on the same machine), with BM25 timed in
